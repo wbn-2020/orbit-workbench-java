@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.agent.infrastructure.mapper.RunEventMapper">
+    <insert id="insert" parameterType="com.orbitworkbench.agent.domain.RunEventRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO run_event (
+            agent_run_id, model_call_id, sequence, event_type, event_summary,
+            payload_json, occurred_at
+        ) VALUES (
+            #{agentRunId}, #{modelCallId}, #{sequence}, #{eventType}, #{eventSummary},
+            #{payloadJson}, #{occurredAt}
+        )
+    </insert>
+
+    <update id="incrementSequence">
+        UPDATE agent_run
+        SET event_sequence = event_sequence + 1
+        WHERE id = #{runId}
+    </update>
+
+    <select id="currentSequence" resultType="long">
+        SELECT event_sequence
+        FROM agent_run
+        WHERE id = #{runId}
+    </select>
+
+    <select id="findAfterSequence" resultType="com.orbitworkbench.agent.domain.RunEventRecord">
+        SELECT id, agent_run_id, model_call_id, sequence, event_type,
+               event_summary, payload_json, occurred_at
+        FROM run_event
+        WHERE agent_run_id = #{runId}
+          AND sequence &gt; #{afterSequence}
+        ORDER BY sequence
+        LIMIT #{limit}
+    </select>
+</mapper>

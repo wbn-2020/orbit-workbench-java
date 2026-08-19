@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.agent.infrastructure.mapper.AgentDefinitionMapper">
+
+    <select id="findActiveIdByModuleType" resultType="long">
+        SELECT id
+        FROM agent_definition
+        WHERE status = 'ACTIVE'
+          AND JSON_UNQUOTE(JSON_EXTRACT(configuration_json, '$.moduleType')) = #{moduleType}
+        ORDER BY id
+        LIMIT 1
+    </select>
+
+    <select id="findPromptContent" resultType="string">
+        SELECT prompt_version.content
+        FROM agent_definition
+        JOIN prompt_version
+          ON prompt_version.id = agent_definition.prompt_version_id
+        WHERE agent_definition.id = #{id}
+          AND agent_definition.status = 'ACTIVE'
+    </select>
+</mapper>

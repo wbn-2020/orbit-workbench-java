@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.aiconnection.infrastructure.mapper.ConnectionTestRecordMapper">
+
+    <resultMap id="ConnectionTestRecordResultMap"
+               type="com.orbitworkbench.aiconnection.domain.ConnectionTestRecord">
+        <id property="id" column="id"/>
+        <result property="connectionId" column="connection_id"/>
+        <result property="protocol" column="protocol"/>
+        <result property="modelName" column="model_name"/>
+        <result property="streaming" column="streaming"/>
+        <result property="status" column="status"/>
+        <result property="httpStatus" column="http_status"/>
+        <result property="latencyMs" column="latency_ms"/>
+        <result property="eventCount" column="event_count"/>
+        <result property="doneMarkerReceived" column="done_marker_received"/>
+        <result property="errorCode" column="error_code"/>
+        <result property="errorSummary" column="error_summary"/>
+        <result property="capabilitiesJson" column="capabilities_json"/>
+        <result property="configurationVersion" column="configuration_version"/>
+        <result property="testedAt" column="tested_at"/>
+    </resultMap>
+
+    <sql id="ConnectionTestColumns">
+        id, connection_id, protocol, model_name, streaming, status, http_status,
+        latency_ms, event_count, done_marker_received, error_code, error_summary,
+        capabilities_json, configuration_version, tested_at
+    </sql>
+
+    <insert id="insert"
+            parameterType="com.orbitworkbench.aiconnection.domain.ConnectionTestRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO connection_test_record (
+            connection_id, protocol, model_name, streaming, status, http_status,
+            latency_ms, event_count, done_marker_received, error_code, error_summary,
+            capabilities_json, configuration_version, tested_at
+        ) VALUES (
+            #{connectionId}, #{protocol}, #{modelName}, #{streaming}, #{status}, #{httpStatus},
+            #{latencyMs}, #{eventCount}, #{doneMarkerReceived}, #{errorCode}, #{errorSummary},
+            #{capabilitiesJson}, #{configurationVersion}, #{testedAt}
+        )
+    </insert>
+
+    <select id="findPage" resultMap="ConnectionTestRecordResultMap">
+        SELECT <include refid="ConnectionTestColumns"/>
+        FROM connection_test_record
+        WHERE connection_id = #{connectionId}
+        ORDER BY tested_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*)
+        FROM connection_test_record
+        WHERE connection_id = #{connectionId}
+    </select>
+</mapper>

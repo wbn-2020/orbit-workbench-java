@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.aiconnection.infrastructure.mapper.ModelProfileMapper">
+
+    <resultMap id="ModelProfileResultMap"
+               type="com.orbitworkbench.aiconnection.domain.ModelProfileRecord">
+        <id property="id" column="id"/>
+        <result property="connectionId" column="connection_id"/>
+        <result property="modelName" column="model_name"/>
+        <result property="displayName" column="display_name"/>
+        <result property="supportedProtocolsJson" column="supported_protocols"/>
+        <result property="capabilitiesJson" column="capabilities_json"/>
+        <result property="defaultParametersJson" column="default_parameters_json"/>
+        <result property="enabled" column="enabled"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="ModelProfileColumns">
+        id, connection_id, model_name, display_name, supported_protocols,
+        capabilities_json, default_parameters_json, enabled, created_at, updated_at
+    </sql>
+
+    <insert id="insert"
+            parameterType="com.orbitworkbench.aiconnection.domain.ModelProfileRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO model_profile (
+            connection_id, model_name, display_name, supported_protocols,
+            capabilities_json, default_parameters_json, enabled, created_at, updated_at
+        ) VALUES (
+            #{connectionId}, #{modelName}, #{displayName}, #{supportedProtocolsJson},
+            #{capabilitiesJson}, #{defaultParametersJson}, #{enabled}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findPrimaryByConnection" resultMap="ModelProfileResultMap">
+        SELECT <include refid="ModelProfileColumns"/>
+        FROM model_profile
+        WHERE connection_id = #{connectionId}
+          AND enabled = 1
+        ORDER BY id ASC
+        LIMIT 1
+    </select>
+
+    <select id="findEnabledByConnection" resultMap="ModelProfileResultMap">
+        SELECT <include refid="ModelProfileColumns"/>
+        FROM model_profile
+        WHERE connection_id = #{connectionId}
+          AND enabled = 1
+        ORDER BY id ASC
+    </select>
+
+    <update id="update"
+            parameterType="com.orbitworkbench.aiconnection.domain.ModelProfileRecord">
+        UPDATE model_profile
+        SET model_name = #{modelName},
+            display_name = #{displayName},
+            supported_protocols = #{supportedProtocolsJson},
+            capabilities_json = #{capabilitiesJson},
+            default_parameters_json = #{defaultParametersJson},
+            enabled = #{enabled},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND connection_id = #{connectionId}
+    </update>
+</mapper>

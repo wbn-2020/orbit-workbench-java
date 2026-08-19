@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.aiconnection.infrastructure.mapper.ProviderCatalogMapper">
+
+    <resultMap id="ProviderCatalogResultMap"
+               type="com.orbitworkbench.aiconnection.domain.ProviderCatalogRecord">
+        <id property="id" column="id"/>
+        <result property="providerCode" column="provider_code"/>
+        <result property="displayName" column="display_name"/>
+        <result property="adapterType" column="adapter_type"/>
+        <result property="defaultProtocolsJson" column="default_protocols"/>
+        <result property="capabilitiesJson" column="capabilities_json"/>
+        <result property="enabled" column="enabled"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="ProviderColumns">
+        id, provider_code, display_name, adapter_type, default_protocols,
+        capabilities_json, enabled, created_at, updated_at
+    </sql>
+
+    <select id="findEnabled" resultMap="ProviderCatalogResultMap">
+        SELECT <include refid="ProviderColumns"/>
+        FROM provider_catalog
+        WHERE enabled = 1
+        ORDER BY display_name ASC, id ASC
+    </select>
+
+    <select id="findEnabledByCode" resultMap="ProviderCatalogResultMap">
+        SELECT <include refid="ProviderColumns"/>
+        FROM provider_catalog
+        WHERE provider_code = #{providerCode}
+          AND enabled = 1
+    </select>
+</mapper>

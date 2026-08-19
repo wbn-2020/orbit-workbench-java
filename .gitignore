@@ -1,0 +1,14 @@
+target/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.local/
+*.log
+.env
+.env.*
+!.env.example
+src/main/resources/application-local.yml
+src/main/resources/application-*.local.yml
+

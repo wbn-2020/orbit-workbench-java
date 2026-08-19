@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.document.infrastructure.mapper.DocumentMapper">
+
+    <resultMap id="DocumentResultMap" type="com.orbitworkbench.document.domain.DocumentRecord">
+        <id property="id" column="id"/>
+        <result property="workspaceId" column="workspace_id"/>
+        <result property="name" column="name"/>
+        <result property="mediaType" column="media_type"/>
+        <result property="sizeBytes" column="size_bytes"/>
+        <result property="storageRef" column="storage_ref"/>
+        <result property="contentHash" column="content_hash"/>
+        <result property="parseStatus" column="parse_status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="DocumentColumns">
+        document.id, document.workspace_id, document.name, document.media_type,
+        document.size_bytes, document.storage_ref, document.content_hash,
+        document.parse_status, document.created_at, document.updated_at
+    </sql>
+
+    <resultMap id="StorageCleanupFailureResultMap"
+               type="com.orbitworkbench.document.domain.StorageCleanupFailureRecord">
+        <id property="id" column="id"/>
+        <result property="resourceType" column="resource_type"/>
+        <result property="resourceId" column="resource_id"/>
+        <result property="storageRef" column="storage_ref"/>
+        <result property="storageRefFingerprint" column="storage_ref_fingerprint"/>
+        <result property="operation" column="operation"/>
+        <result property="status" column="status"/>
+        <result property="failureType" column="failure_type"/>
+        <result property="failureSummary" column="failure_summary"/>
+        <result property="retryCount" column="retry_count"/>
+        <result property="lastRetriedAt" column="last_retried_at"/>
+        <result property="resolvedAt" column="resolved_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="StorageCleanupFailureColumns">
+        id, resource_type, resource_id, storage_ref, storage_ref_fingerprint,
+        operation, status, failure_type, failure_summary, retry_count,
+        last_retried_at, resolved_at, created_at, updated_at
+    </sql>
+
+    <insert id="insert"
+            parameterType="com.orbitworkbench.document.domain.DocumentRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO document (
+            workspace_id, name, media_type, size_bytes, storage_ref,
+            content_hash, parse_status, created_at, updated_at
+        ) VALUES (
+            #{workspaceId}, #{name}, #{mediaType}, #{sizeBytes}, #{storageRef},
+            #{contentHash}, #{parseStatus}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findById" resultMap="DocumentResultMap">
+        SELECT <include refid="DocumentColumns"/>
+        FROM document
+        JOIN workspace w ON w.id = document.workspace_id AND w.status = 'ACTIVE'
+        WHERE document.id = #{id}
+    </select>
+
+    <select id="findByIdForUpdate" resultMap="DocumentResultMap">
+        SELECT <include refid="DocumentColumns"/>
+        FROM document
+        JOIN workspace w ON w.id = document.workspace_id AND w.status = 'ACTIVE'
+        WHERE document.id = #{id}
+        FOR UPDATE
+    </select>
+
+    <select id="findByWorkspaceAndHash" resultMap="DocumentResultMap">
+        SELECT <include refid="DocumentColumns"/>
+        FROM document
+        JOIN workspace w ON w.id = document.workspace_id AND w.status = 'ACTIVE'
+        WHERE document.workspace_id = #{workspaceId}
+          AND document.content_hash = #{contentHash}
+    </select>
+
+    <select id="findPage" resultMap="DocumentResultMap">
+        SELECT <include refid="DocumentColumns"/>
+        FROM document
+        JOIN workspace w ON w.id = document.workspace_id AND w.status = 'ACTIVE'
+        <where>
+            <if test="workspaceId != null">
+                document.workspace_id = #{workspaceId}
+            </if>
+        </where>
+        ORDER BY document.created_at DESC, document.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*)
+        FROM document
+        JOIN workspace w ON w.id = document.workspace_id AND w.status = 'ACTIVE'
+        <where>
+            <if test="workspaceId != null">
+                document.workspace_id = #{workspaceId}
+            </if>
+        </where>
+    </select>
+
+    <select id="findByIds" resultMap="DocumentResultMap">
+        SELECT <include refid="DocumentColumns"/>
+        FROM document
+        JOIN workspace w ON w.id = document.workspace_id AND w.status = 'ACTIVE'
+        WHERE document.id IN
+        <foreach collection="documentIds" item="documentId" open="(" separator="," close=")">
+            #{documentId}
+        </foreach>
+        ORDER BY document.id
+    </select>
+
+    <select id="countTaskReferences" resultType="int">
+        SELECT COUNT(*)
+        FROM task_document
+        WHERE document_id = #{documentId}
+    </select>
+
+    <select id="countActiveWorkspace" resultType="int">
+        SELECT COUNT(*)
+        FROM workspace
+        WHERE id = #{workspaceId}
+          AND status = 'ACTIVE'
+    </select>
+
+    <select id="lockActiveWorkspace" resultType="long">
+        SELECT id
+        FROM workspace
+        WHERE id = #{workspaceId}
+          AND status = 'ACTIVE'
+        FOR UPDATE
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM document
+        WHERE id = #{id}
+    </delete>
+
+    <insert id="insertCleanupFailure"
+            parameterType="com.orbitworkbench.document.domain.StorageCleanupFailureRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO storage_cleanup_failure (
+            resource_type, resource_id, storage_ref, storage_ref_fingerprint,
+            operation, status, failure_type, failure_summary, retry_count,
+            last_retried_at, resolved_at, created_at, updated_at
+        ) VALUES (
+            #{resourceType}, #{resourceId}, #{storageRef}, #{storageRefFingerprint},
+            #{operation}, #{status}, #{failureType}, #{failureSummary}, #{retryCount},
+            #{lastRetriedAt}, #{resolvedAt}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findCleanupFailurePage" resultMap="StorageCleanupFailureResultMap">
+        SELECT <include refid="StorageCleanupFailureColumns"/>
+        FROM storage_cleanup_failure
+        <if test="status != null">
+            WHERE status = #{status}
+        </if>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countCleanupFailures" resultType="long">
+        SELECT COUNT(*)
+        FROM storage_cleanup_failure
+        <if test="status != null">
+            WHERE status = #{status}
+        </if>
+    </select>
+
+    <select id="findCleanupFailureByIdForUpdate" resultMap="StorageCleanupFailureResultMap">
+        SELECT <include refid="StorageCleanupFailureColumns"/>
+        FROM storage_cleanup_failure
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
+    <update id="resolveCleanupFailure">
+        UPDATE storage_cleanup_failure
+        SET status = 'RESOLVED',
+            resolved_at = #{resolvedAt},
+            last_retried_at = #{resolvedAt},
+            retry_count = retry_count + 1,
+            updated_at = #{resolvedAt}
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+
+    <update id="recordCleanupRetryFailure">
+        UPDATE storage_cleanup_failure
+        SET failure_type = #{failureType},
+            failure_summary = #{failureSummary},
+            last_retried_at = #{retriedAt},
+            retry_count = retry_count + 1,
+            updated_at = #{retriedAt}
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+</mapper>

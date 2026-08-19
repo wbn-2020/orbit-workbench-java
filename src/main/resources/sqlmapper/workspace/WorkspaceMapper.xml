@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.workspace.infrastructure.mapper.WorkspaceMapper">
+    <resultMap id="WorkspaceMap" type="com.orbitworkbench.workspace.domain.WorkspaceRecord">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="defaultKey" column="default_key"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+    <insert id="insert" parameterType="com.orbitworkbench.workspace.domain.WorkspaceRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO workspace(
+            name, description, default_key, status, created_at, updated_at
+        )
+        VALUES(
+            #{name}, #{description}, #{defaultKey}, #{status}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+    <select id="findById" resultMap="WorkspaceMap">
+        SELECT id, name, description, default_key, status, created_at, updated_at
+        FROM workspace WHERE id = #{id} AND status = 'ACTIVE'
+    </select>
+    <select id="findByIdForUpdate" resultMap="WorkspaceMap">
+        SELECT id, name, description, default_key, status, created_at, updated_at
+        FROM workspace
+        WHERE id = #{id} AND status = 'ACTIVE'
+        FOR UPDATE
+    </select>
+    <select id="findAll" resultMap="WorkspaceMap">
+        SELECT id, name, description, default_key, status, created_at, updated_at
+        FROM workspace
+        WHERE status = 'ACTIVE'
+        ORDER BY default_key IS NULL, updated_at DESC, id DESC
+    </select>
+    <update id="update" parameterType="com.orbitworkbench.workspace.domain.WorkspaceRecord">
+        UPDATE workspace
+        SET name = #{name}, description = #{description}, updated_at = #{updatedAt}
+        WHERE id = #{id} AND status = 'ACTIVE'
+    </update>
+    <update id="softDelete">
+        UPDATE workspace SET status = 'ARCHIVED', updated_at = UTC_TIMESTAMP(6)
+        WHERE id = #{id} AND status = 'ACTIVE'
+    </update>
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*) FROM workspace WHERE status = 'ACTIVE'
+    </select>
+    <select id="countTasks" resultType="int">
+        SELECT COUNT(*) FROM task WHERE workspace_id = #{workspaceId}
+    </select>
+    <select id="countDocuments" resultType="int">
+        SELECT COUNT(*) FROM document WHERE workspace_id = #{workspaceId}
+    </select>
+    <select id="countArtifacts" resultType="int">
+        SELECT COUNT(*) FROM artifact WHERE workspace_id = #{workspaceId}
+    </select>
+</mapper>

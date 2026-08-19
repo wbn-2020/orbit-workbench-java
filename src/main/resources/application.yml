@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: orbit-workbench-java
+  datasource:
+    url: ${ORBIT_DB_URL:jdbc:mysql://127.0.0.1:3306/orbit_workbench?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC}
+    username: ${ORBIT_DB_USERNAME:orbit}
+    password: ${ORBIT_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  session:
+    store-type: jdbc
+    jdbc:
+      initialize-schema: never
+    timeout: 12h
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  jackson:
+    default-property-inclusion: non_null
+    time-zone: UTC
+
+server:
+  address: ${ORBIT_SERVER_ADDRESS:127.0.0.1}
+  port: ${ORBIT_SERVER_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: false
+
+mybatis:
+  mapper-locations: classpath*:sqlmapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+orbit:
+  crypto:
+    master-key: ${ORBIT_MASTER_KEY:}
+    key-version: ${ORBIT_MASTER_KEY_VERSION:1}
+  storage:
+    root: ${ORBIT_STORAGE_ROOT:C:/AI/orbit-workbench/.local/storage}
+    max-document-bytes: ${ORBIT_MAX_DOCUMENT_BYTES:2097152}
+    max-artifact-bytes: ${ORBIT_MAX_ARTIFACT_BYTES:2097152}
+  agent:
+    runtime:
+      max-output-characters: ${ORBIT_AGENT_MAX_OUTPUT_CHARACTERS:262144}
+      max-output-bytes: ${ORBIT_AGENT_MAX_OUTPUT_BYTES:1048576}
+      max-stream-events: ${ORBIT_AGENT_MAX_STREAM_EVENTS:10000}
+      max-run-duration: ${ORBIT_AGENT_MAX_RUN_DURATION:5m}
+      heartbeat-interval: ${ORBIT_AGENT_HEARTBEAT_INTERVAL:10s}

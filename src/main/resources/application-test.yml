@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: ${ORBIT_TEST_DB_URL:jdbc:mysql://127.0.0.1:3306/orbit_workbench_test?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC}
+    username: ${ORBIT_TEST_DB_USERNAME:orbit}
+    password: ${ORBIT_TEST_DB_PASSWORD:}
+
+orbit:
+  crypto:
+    master-key: ${ORBIT_TEST_MASTER_KEY:}
+  storage:
+    root: ${ORBIT_TEST_STORAGE_ROOT:C:/AI/orbit-workbench/.local/test-storage}
+    max-document-bytes: ${ORBIT_TEST_MAX_DOCUMENT_BYTES:2097152}
+    max-artifact-bytes: ${ORBIT_TEST_MAX_ARTIFACT_BYTES:2097152}
