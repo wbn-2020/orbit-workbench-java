@@ -6,6 +6,10 @@ import com.orbitworkbench.agent.domain.AgentDefinitionDetailRecord;
 import com.orbitworkbench.agent.domain.AgentVersionRecord;
 import com.orbitworkbench.agent.infrastructure.mapper.AgentDefinitionMapper;
 import com.orbitworkbench.agent.infrastructure.mapper.AgentVersionMapper;
+import com.orbitworkbench.mcp.domain.McpServerRecord;
+import com.orbitworkbench.mcp.domain.McpToolRecord;
+import com.orbitworkbench.mcp.infrastructure.mapper.McpServerMapper;
+import com.orbitworkbench.mcp.infrastructure.mapper.McpToolMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.PageResult;
@@ -53,6 +57,8 @@ public class WorkflowService {
     private final AgentDefinitionMapper agentDefinitionMapper;
     private final AgentVersionMapper agentVersionMapper;
     private final ToolVersionMapper toolVersionMapper;
+    private final McpServerMapper mcpServerMapper;
+    private final McpToolMapper mcpToolMapper;
     private final WorkflowGraphValidator graphValidator;
     private final ObjectMapper objectMapper;
 
@@ -64,6 +70,8 @@ public class WorkflowService {
                            AgentDefinitionMapper agentDefinitionMapper,
                            AgentVersionMapper agentVersionMapper,
                            ToolVersionMapper toolVersionMapper,
+                           McpServerMapper mcpServerMapper,
+                           McpToolMapper mcpToolMapper,
                            WorkflowGraphValidator graphValidator,
                            ObjectMapper objectMapper) {
         this.definitionMapper = definitionMapper;
@@ -74,6 +82,8 @@ public class WorkflowService {
         this.agentDefinitionMapper = agentDefinitionMapper;
         this.agentVersionMapper = agentVersionMapper;
         this.toolVersionMapper = toolVersionMapper;
+        this.mcpServerMapper = mcpServerMapper;
+        this.mcpToolMapper = mcpToolMapper;
         this.graphValidator = graphValidator;
         this.objectMapper = objectMapper;
     }
@@ -494,7 +504,28 @@ public class WorkflowService {
                             ErrorCode.WORKFLOW_GRAPH_INVALID,
                             "TOOL 节点绑定的工具不存在或未启用: " + node.key());
                 }
+                validateMcpToolReference(toolCode, workspaceId, node.key());
             }
+        }
+    }
+
+    private void validateMcpToolReference(String toolCode,
+                                          Long workspaceId,
+                                          String nodeKey) {
+        McpToolRecord mcpTool = mcpToolMapper.findByToolCode(toolCode);
+        if (mcpTool == null) {
+            return;
+        }
+        McpServerRecord server = mcpServerMapper.findById(mcpTool.getMcpServerId());
+        if (server == null || !workspaceId.equals(server.getWorkspaceId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    ErrorCode.WORKFLOW_GRAPH_INVALID,
+                    "TOOL 节点引用的 MCP Tool 不属于当前工作空间: " + nodeKey);
+        }
+        if (!mcpTool.isEnabled()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    ErrorCode.WORKFLOW_GRAPH_INVALID,
+                    "TOOL 节点引用的 MCP Tool 尚未启用: " + nodeKey);
         }
     }
 
