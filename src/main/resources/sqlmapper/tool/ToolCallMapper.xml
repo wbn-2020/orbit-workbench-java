@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.tool.infrastructure.mapper.ToolCallMapper">
+
+    <resultMap id="CallResultMap"
+               type="com.orbitworkbench.tool.domain.ToolCallRecord">
+        <id property="id" column="id"/>
+        <result property="agentRunId" column="agent_run_id"/>
+        <result property="stepId" column="step_id"/>
+        <result property="modelCallId" column="model_call_id"/>
+        <result property="toolDefinitionId" column="tool_definition_id"/>
+        <result property="toolVersionId" column="tool_version_id"/>
+        <result property="toolCode" column="tool_code"/>
+        <result property="toolVersion" column="tool_version"/>
+        <result property="callKey" column="call_key"/>
+        <result property="argumentsHash" column="arguments_hash"/>
+        <result property="status" column="status"/>
+        <result property="argumentsSnapshotRef" column="arguments_snapshot_ref"/>
+        <result property="argumentsSummary" column="arguments_summary"/>
+        <result property="resultSnapshotRef" column="result_snapshot_ref"/>
+        <result property="resultSummary" column="result_summary"/>
+        <result property="resultSizeBytes" column="result_size_bytes"/>
+        <result property="retryOfToolCallId" column="retry_of_tool_call_id"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="errorCode" column="error_code"/>
+        <result property="errorSummary" column="error_summary"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="CallColumns">
+        id, agent_run_id, step_id, model_call_id, tool_definition_id,
+        tool_version_id,
+        tool_code, tool_version, call_key, arguments_hash, status,
+        arguments_snapshot_ref, arguments_summary,
+        result_snapshot_ref, result_summary, result_size_bytes,
+        retry_of_tool_call_id, started_at, finished_at,
+        error_code, error_summary, created_at, updated_at
+    </sql>
+
+    <insert id="insert"
+            parameterType="com.orbitworkbench.tool.domain.ToolCallRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO tool_call (
+            agent_run_id, step_id, model_call_id, tool_definition_id,
+            tool_version_id,
+            tool_code, tool_version, call_key, arguments_hash, status,
+            arguments_snapshot_ref, arguments_summary,
+            result_snapshot_ref, result_summary, result_size_bytes,
+            retry_of_tool_call_id, started_at, finished_at,
+            error_code, error_summary, created_at, updated_at
+        ) VALUES (
+            #{agentRunId}, #{stepId}, #{modelCallId}, #{toolDefinitionId},
+            #{toolVersionId},
+            #{toolCode}, #{toolVersion}, #{callKey}, #{argumentsHash}, #{status},
+            #{argumentsSnapshotRef}, #{argumentsSummary},
+            #{resultSnapshotRef}, #{resultSummary}, #{resultSizeBytes},
+            #{retryOfToolCallId}, #{startedAt}, #{finishedAt},
+            #{errorCode}, #{errorSummary}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findById" resultMap="CallResultMap">
+        SELECT <include refid="CallColumns"/>
+        FROM tool_call
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByCallKey" resultMap="CallResultMap">
+        SELECT <include refid="CallColumns"/>
+        FROM tool_call
+        WHERE call_key = #{callKey}
+    </select>
+
+    <select id="findByRunId" resultMap="CallResultMap">
+        SELECT <include refid="CallColumns"/>
+        FROM tool_call
+        WHERE agent_run_id = #{runId}
+        ORDER BY created_at, id
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByRunId" resultType="long">
+        SELECT COUNT(*)
+        FROM tool_call
+        WHERE agent_run_id = #{runId}
+    </select>
+
+    <update id="markRunning">
+        UPDATE tool_call
+        SET status = 'RUNNING',
+            started_at = #{startedAt},
+            updated_at = #{startedAt}
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+
+    <update id="markSucceeded">
+        UPDATE tool_call
+        SET status = 'SUCCEEDED',
+            result_snapshot_ref = #{resultSnapshotRef},
+            result_summary = #{resultSummary},
+            result_size_bytes = #{resultSizeBytes},
+            finished_at = #{finishedAt},
+            updated_at = #{finishedAt}
+        WHERE id = #{id}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="markFailed">
+        UPDATE tool_call
+        SET status = 'FAILED',
+            error_code = #{errorCode},
+            error_summary = #{errorSummary},
+            finished_at = #{finishedAt},
+            updated_at = #{finishedAt}
+        WHERE id = #{id}
+          AND status IN ('PENDING', 'RUNNING')
+    </update>
+
+    <update id="markCancelled">
+        UPDATE tool_call
+        SET status = 'CANCELLED',
+            error_code = 'CANCELLED',
+            error_summary = '工具调用已取消',
+            finished_at = #{finishedAt},
+            updated_at = #{finishedAt}
+        WHERE id = #{id}
+          AND status IN ('PENDING', 'RUNNING')
+    </update>
+
+    <update id="cancelRunningByRunId">
+        UPDATE tool_call
+        SET status = 'CANCELLED',
+            finished_at = #{finishedAt},
+            updated_at = #{finishedAt}
+        WHERE agent_run_id = #{runId}
+          AND status IN ('PENDING', 'RUNNING')
+    </update>
+</mapper>

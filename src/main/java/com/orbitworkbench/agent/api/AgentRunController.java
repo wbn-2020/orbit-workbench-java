@@ -1,11 +1,17 @@
 package com.orbitworkbench.agent.api;
 
 import com.orbitworkbench.agent.api.AgentRunDtos.AgentRunResponse;
+import com.orbitworkbench.agent.api.AgentRunDtos.AgentRunStepResponse;
 import com.orbitworkbench.agent.api.AgentRunDtos.RunCommandResponse;
 import com.orbitworkbench.agent.api.AgentRunDtos.RunCreatedResponse;
 import com.orbitworkbench.agent.application.AgentRunService;
+import com.orbitworkbench.agent.application.AgentRunStepService;
 import com.orbitworkbench.agent.application.SseHub;
+import com.orbitworkbench.shared.api.PageResult;
 import com.orbitworkbench.task.application.TaskService;
+import com.orbitworkbench.tool.api.ToolDtos.ToolCallResponse;
+import com.orbitworkbench.tool.application.ToolQueryService;
+import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,13 +31,19 @@ public class AgentRunController {
     private final AgentRunService agentRunService;
     private final SseHub sseHub;
     private final TaskService taskService;
+    private final AgentRunStepService stepService;
+    private final ToolQueryService toolQueryService;
 
     public AgentRunController(AgentRunService agentRunService,
                               SseHub sseHub,
-                              TaskService taskService) {
+                              TaskService taskService,
+                              AgentRunStepService stepService,
+                              ToolQueryService toolQueryService) {
         this.agentRunService = agentRunService;
         this.sseHub = sseHub;
         this.taskService = taskService;
+        this.stepService = stepService;
+        this.toolQueryService = toolQueryService;
     }
 
     @GetMapping("/{id}")
@@ -76,6 +88,37 @@ public class AgentRunController {
                 ? parseSequence(lastEventId)
                 : Math.max(afterSequence, 0L);
         return sseHub.subscribe(id, sequence);
+    }
+
+    @GetMapping("/{id}/steps")
+    public List<AgentRunStepResponse> steps(@PathVariable Long id) {
+        agentRunService.get(id);
+        return stepService.findByRunId(id).stream()
+                .map(step -> new AgentRunStepResponse(
+                        step.getId(),
+                        step.getAgentRunId(),
+                        step.getStepNumber(),
+                        step.getStepType(),
+                        step.getTitle(),
+                        step.getStatus(),
+                        step.getModelCallId(),
+                        step.getToolCallId(),
+                        step.getInputSummary(),
+                        step.getOutputSummary(),
+                        step.getStartedAt(),
+                        step.getFinishedAt(),
+                        step.getErrorCode(),
+                        step.getErrorSummary()))
+                .toList();
+    }
+
+    @GetMapping("/{id}/tool-calls")
+    public PageResult<ToolCallResponse> toolCalls(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        agentRunService.get(id);
+        return toolQueryService.calls(id, page, size);
     }
 
     private long parseSequence(String value) {

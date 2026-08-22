@@ -7,6 +7,7 @@ public class AgentRunRecord {
     private Long id;
     private Long taskId;
     private Long agentDefinitionId;
+    private Long agentVersionId;
     private Long connectionId;
     private String status;
     private String currentStep;
@@ -43,6 +44,14 @@ public class AgentRunRecord {
 
     public void setAgentDefinitionId(Long agentDefinitionId) {
         this.agentDefinitionId = agentDefinitionId;
+    }
+
+    public Long getAgentVersionId() {
+        return agentVersionId;
+    }
+
+    public void setAgentVersionId(Long agentVersionId) {
+        this.agentVersionId = agentVersionId;
     }
 
     public Long getConnectionId() {

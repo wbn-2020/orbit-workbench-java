@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.analysis.infrastructure.mapper.DataAnalysisTaskMapper">
+
+    <resultMap id="DataAnalysisTaskResultMap"
+               type="com.orbitworkbench.analysis.domain.DataAnalysisTaskRecord">
+        <id property="taskId" column="task_id"/>
+        <result property="datasetId" column="dataset_id"/>
+        <result property="sheetId" column="sheet_id"/>
+        <result property="analysisGoal" column="analysis_goal"/>
+        <result property="expectedOutputsJson" column="expected_outputs_json"/>
+        <result property="columnOverridesJson" column="column_overrides_json"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="DatasetSelectionResultMap"
+               type="com.orbitworkbench.analysis.domain.DatasetSelectionRecord">
+        <id property="datasetId" column="dataset_id"/>
+        <result property="workspaceId" column="workspace_id"/>
+        <result property="datasetName" column="dataset_name"/>
+        <result property="datasetFormat" column="dataset_format"/>
+        <result property="datasetStatus" column="dataset_status"/>
+        <result property="datasetRowCount" column="dataset_row_count"/>
+        <result property="datasetColumnCount" column="dataset_column_count"/>
+        <result property="sheetId" column="sheet_id"/>
+        <result property="sheetName" column="sheet_name"/>
+        <result property="sheetRowCount" column="sheet_row_count"/>
+        <result property="sheetColumnCount" column="sheet_column_count"/>
+    </resultMap>
+
+    <resultMap id="RunContextResultMap"
+               type="com.orbitworkbench.analysis.domain.DataAnalysisRunContextRecord">
+        <id property="taskId" column="task_id"/>
+        <result property="workspaceId" column="workspace_id"/>
+        <result property="connectionId" column="connection_id"/>
+        <result property="taskTitle" column="task_title"/>
+        <result property="taskStatus" column="task_status"/>
+        <result property="datasetId" column="dataset_id"/>
+        <result property="datasetWorkspaceId" column="dataset_workspace_id"/>
+        <result property="datasetName" column="dataset_name"/>
+        <result property="datasetFormat" column="dataset_format"/>
+        <result property="datasetStatus" column="dataset_status"/>
+        <result property="sheetId" column="sheet_id"/>
+        <result property="sheetName" column="sheet_name"/>
+        <result property="rowCount" column="row_count"/>
+        <result property="columnCount" column="column_count"/>
+        <result property="analysisGoal" column="analysis_goal"/>
+        <result property="expectedOutputsJson" column="expected_outputs_json"/>
+        <result property="columnOverridesJson" column="column_overrides_json"/>
+    </resultMap>
+
+    <insert id="insert"
+            parameterType="com.orbitworkbench.analysis.domain.DataAnalysisTaskRecord">
+        INSERT INTO data_analysis_task (
+            task_id, dataset_id, sheet_id, analysis_goal,
+            expected_outputs_json, column_overrides_json,
+            created_at, updated_at
+        ) VALUES (
+            #{taskId}, #{datasetId}, #{sheetId}, #{analysisGoal},
+            #{expectedOutputsJson}, #{columnOverridesJson},
+            #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findByTaskId" resultMap="DataAnalysisTaskResultMap">
+        SELECT task_id, dataset_id, sheet_id, analysis_goal,
+               expected_outputs_json, column_overrides_json,
+               created_at, updated_at
+        FROM data_analysis_task
+        WHERE task_id = #{taskId}
+    </select>
+
+    <select id="findRunContext" resultMap="RunContextResultMap">
+        SELECT task.id AS task_id,
+               task.workspace_id,
+               task.connection_id,
+               task.title AS task_title,
+               task.status AS task_status,
+               dataset.id AS dataset_id,
+               dataset.workspace_id AS dataset_workspace_id,
+               dataset.name AS dataset_name,
+               dataset.format AS dataset_format,
+               dataset.status AS dataset_status,
+               dataset_sheet.id AS sheet_id,
+               dataset_sheet.sheet_name,
+               dataset_sheet.row_count,
+               dataset_sheet.column_count,
+               data_analysis_task.analysis_goal,
+               data_analysis_task.expected_outputs_json,
+               data_analysis_task.column_overrides_json
+        FROM data_analysis_task
+        JOIN task ON task.id = data_analysis_task.task_id
+        JOIN dataset ON dataset.id = data_analysis_task.dataset_id
+        JOIN dataset_sheet
+          ON dataset_sheet.id = data_analysis_task.sheet_id
+         AND dataset_sheet.dataset_id = dataset.id
+        WHERE task.id = #{taskId}
+          AND task.module_type = 'DATA_ANALYSIS'
+    </select>
+
+    <select id="lockDatasetSelection" resultMap="DatasetSelectionResultMap">
+        SELECT dataset.id AS dataset_id,
+               dataset.workspace_id,
+               dataset.name AS dataset_name,
+               dataset.format AS dataset_format,
+               dataset.status AS dataset_status,
+               dataset.row_count AS dataset_row_count,
+               dataset.column_count AS dataset_column_count,
+               dataset_sheet.id AS sheet_id,
+               dataset_sheet.sheet_name,
+               dataset_sheet.row_count AS sheet_row_count,
+               dataset_sheet.column_count AS sheet_column_count
+        FROM dataset
+        LEFT JOIN dataset_sheet
+          ON dataset_sheet.id = #{sheetId}
+         AND dataset_sheet.dataset_id = dataset.id
+        WHERE dataset.id = #{datasetId}
+        FOR UPDATE
+    </select>
+
+    <select id="lockColumnIds" resultType="long">
+        SELECT id
+        FROM dataset_column
+        WHERE dataset_id = #{datasetId}
+          AND sheet_id = #{sheetId}
+          AND id IN
+          <foreach collection="columnIds" item="columnId" open="(" separator="," close=")">
+              #{columnId}
+          </foreach>
+        ORDER BY id
+        FOR UPDATE
+    </select>
+
+    <update id="update">
+        UPDATE data_analysis_task
+        SET dataset_id = #{datasetId},
+            sheet_id = #{sheetId},
+            analysis_goal = #{analysisGoal},
+            expected_outputs_json = #{expectedOutputsJson},
+            column_overrides_json = #{columnOverridesJson},
+            updated_at = #{updatedAt}
+        WHERE task_id = #{taskId}
+    </update>
+</mapper>

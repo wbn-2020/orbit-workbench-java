@@ -3,9 +3,12 @@ package com.orbitworkbench.ai.infrastructure.adapter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.ai.application.AiAdapterCall;
+import com.orbitworkbench.ai.application.AiConversationItem;
 import com.orbitworkbench.ai.application.AiInvocation;
 import com.orbitworkbench.ai.application.AiProviderException;
 import com.orbitworkbench.ai.application.AiStreamEvent;
+import com.orbitworkbench.ai.application.AiToolCall;
+import com.orbitworkbench.ai.application.AiToolDefinition;
 import com.orbitworkbench.ai.application.AiUsage;
 import com.orbitworkbench.shared.api.ErrorCode;
 import java.util.ArrayList;
@@ -39,10 +42,20 @@ public class OpenAiCompatibleResponsesAdapter
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", invocation.connection().modelName());
         body.put("instructions", invocation.systemPrompt());
-        body.put("input", invocation.userPrompt());
+        body.put("input", responsesInput(invocation));
         body.put("stream", invocation.stream());
         body.put("max_output_tokens", invocation.maxOutputTokens());
         body.put("store", false);
+        if (invocation.previousResponseId() != null
+                && !invocation.previousResponseId().isBlank()) {
+            body.put("previous_response_id", invocation.previousResponseId());
+        }
+        if (!invocation.tools().isEmpty()) {
+            body.put("tools", invocation.tools().stream()
+                    .map(this::responsesTool)
+                    .toList());
+            body.put("tool_choice", "auto");
+        }
         return body;
     }
 
@@ -54,7 +67,9 @@ public class OpenAiCompatibleResponsesAdapter
         if (text == null) {
             text = responseOutputText(AiJsonSupport.node(root, "output"));
         }
-        if (text == null || text.isBlank()) {
+        List<AiToolCall> toolCalls = responseToolCalls(
+                AiJsonSupport.node(root, "output"));
+        if ((text == null || text.isBlank()) && toolCalls.isEmpty()) {
             throw invalidOutput(providerRequestId);
         }
         if (!"completed".equalsIgnoreCase(AiJsonSupport.text(root, "status"))) {
@@ -63,8 +78,12 @@ public class OpenAiCompatibleResponsesAdapter
         AiUsage usage = AiJsonSupport.usage(root);
         List<AiStreamEvent> result = new ArrayList<>();
         result.add(event("run.started", null, null, providerRequestId, false));
-        result.add(event("output.text.delta", text, null, providerRequestId, false));
-        result.add(event("output.text.completed", null, null, providerRequestId, false));
+        if (text != null && !text.isBlank()) {
+            result.add(event("output.text.delta", text, null, providerRequestId, false));
+            result.add(event("output.text.completed", null, null, providerRequestId, false));
+        }
+        toolCalls.forEach(toolCall ->
+                result.add(AiStreamEvent.toolCall(toolCall, providerRequestId)));
         if (usage != null) {
             result.add(event("usage.updated", null, usage, providerRequestId, false));
         }
@@ -79,8 +98,11 @@ public class OpenAiCompatibleResponsesAdapter
             AiAdapterCall call) {
         AtomicBoolean terminationSeen = new AtomicBoolean();
         AtomicBoolean textSeen = new AtomicBoolean();
+        AtomicBoolean toolSeen = new AtomicBoolean();
+        AtomicBoolean toolCallsEmitted = new AtomicBoolean();
         AtomicReference<String> requestId = new AtomicReference<>();
         AtomicReference<AiUsage> lastUsage = new AtomicReference<>();
+        Map<String, ResponseToolCallAccumulator> toolCalls = new LinkedHashMap<>();
 
         Flux<AiStreamEvent> payload = events.concatMap(serverEvent -> {
             String data = serverEvent.data();
@@ -112,6 +134,7 @@ public class OpenAiCompatibleResponsesAdapter
                 mapped.add(event("usage.updated", null, usage,
                         requestId.get(), false));
             }
+            collectResponseToolCall(toolCalls, root, type);
             if ("response.output_text.done".equals(type)) {
                 mapped.add(event("output.text.completed", null, usage,
                         requestId.get(), false));
@@ -119,6 +142,8 @@ public class OpenAiCompatibleResponsesAdapter
             if ("response.completed".equals(type)) {
                 call.markDoneMarkerReceived();
                 terminationSeen.set(true);
+                mapped.addAll(completeResponseToolCalls(
+                        toolCalls, requestId.get(), toolSeen, toolCallsEmitted));
             }
             if ("response.failed".equals(type) || "response.error".equals(type)) {
                 String message = AiJsonSupport.text(root, "error", "message");
@@ -143,12 +168,189 @@ public class OpenAiCompatibleResponsesAdapter
                     if (!terminationSeen.get()) {
                         return Flux.error(incompleteResponse(requestId.get()));
                     }
-                    if (!textSeen.get()) {
+                    if (!textSeen.get() && !toolSeen.get()) {
                         return Flux.error(invalidOutput(requestId.get()));
                     }
                     return Flux.just(event("run.completed", null, lastUsage.get(),
                             requestId.get(), true));
                 }));
+    }
+
+    private Object responsesInput(AiInvocation invocation) {
+        if (invocation.conversation().isEmpty()) {
+            return invocation.userPrompt();
+        }
+        List<Map<String, Object>> input = new ArrayList<>();
+        for (AiConversationItem item : invocation.conversation()) {
+            if ("tool".equals(item.role())) {
+                input.add(Map.of(
+                        "type", "function_call_output",
+                        "call_id", item.toolCallId(),
+                        "output", item.content()));
+                continue;
+            }
+            if (item.toolCalls() != null && !item.toolCalls().isEmpty()) {
+                for (AiToolCall toolCall : item.toolCalls()) {
+                    input.add(Map.of(
+                            "type", "function_call",
+                            "call_id", toolCall.id(),
+                            "name", toolCall.name(),
+                            "arguments", toolCall.argumentsJson()));
+                }
+            }
+            if (item.content() != null && !item.content().isBlank()) {
+                input.add(Map.of(
+                        "role", item.role(),
+                        "content", item.content()));
+            }
+        }
+        return input;
+    }
+
+    private Map<String, Object> responsesTool(AiToolDefinition definition) {
+        Map<String, Object> tool = new LinkedHashMap<>();
+        tool.put("type", "function");
+        tool.put("name", definition.name());
+        if (definition.description() != null) {
+            tool.put("description", definition.description());
+        }
+        tool.put("parameters", definition.parameters());
+        tool.put("strict", true);
+        return tool;
+    }
+
+    private List<AiToolCall> responseToolCalls(JsonNode output) {
+        if (output == null || !output.isArray()) {
+            return List.of();
+        }
+        List<AiToolCall> result = new ArrayList<>();
+        int index = 0;
+        for (JsonNode item : output) {
+            if (!"function_call".equals(AiJsonSupport.text(item, "type"))) {
+                index++;
+                continue;
+            }
+            String id = firstNonBlank(
+                    AiJsonSupport.text(item, "call_id"),
+                    AiJsonSupport.text(item, "id"),
+                    "call_" + index);
+            String name = AiJsonSupport.text(item, "name");
+            JsonNode arguments = AiJsonSupport.node(item, "arguments");
+            if (name != null && arguments != null) {
+                result.add(new AiToolCall(
+                        id,
+                        name,
+                        arguments.isTextual() ? arguments.asText() : arguments.toString()));
+            }
+            index++;
+        }
+        return result;
+    }
+
+    private void collectResponseToolCall(
+            Map<String, ResponseToolCallAccumulator> accumulators,
+            JsonNode root,
+            String type) {
+        JsonNode item = AiJsonSupport.node(root, "item");
+        String key = firstNonBlank(
+                AiJsonSupport.text(root, "item_id"),
+                AiJsonSupport.text(item, "id"),
+                AiJsonSupport.text(root, "call_id"),
+                String.valueOf(AiJsonSupport.integer(root, "output_index")));
+        if (key == null || "null".equals(key)) {
+            return;
+        }
+        ResponseToolCallAccumulator accumulator =
+                accumulators.computeIfAbsent(key, ignored -> new ResponseToolCallAccumulator());
+        if ("response.output_item.added".equals(type)
+                || "response.output_item.done".equals(type)) {
+            if (item != null && "function_call".equals(AiJsonSupport.text(item, "type"))) {
+                accumulator.merge(
+                        firstNonBlank(
+                                AiJsonSupport.text(item, "call_id"),
+                                AiJsonSupport.text(item, "id")),
+                        AiJsonSupport.text(item, "name"),
+                        AiJsonSupport.text(item, "arguments"),
+                        false);
+            }
+        }
+        if ("response.function_call_arguments.delta".equals(type)) {
+            accumulator.merge(
+                    AiJsonSupport.text(root, "call_id"),
+                    AiJsonSupport.text(root, "name"),
+                    AiJsonSupport.text(root, "delta"),
+                    true);
+        }
+        if ("response.function_call_arguments.done".equals(type)) {
+            accumulator.merge(
+                    AiJsonSupport.text(root, "call_id"),
+                    AiJsonSupport.text(root, "name"),
+                    AiJsonSupport.text(root, "arguments"),
+                    false);
+        }
+    }
+
+    private List<AiStreamEvent> completeResponseToolCalls(
+            Map<String, ResponseToolCallAccumulator> accumulators,
+            String requestId,
+            AtomicBoolean toolSeen,
+            AtomicBoolean emitted) {
+        if (!emitted.compareAndSet(false, true)) {
+            return List.of();
+        }
+        List<AiStreamEvent> result = new ArrayList<>();
+        int index = 0;
+        for (ResponseToolCallAccumulator accumulator : accumulators.values()) {
+            AiToolCall toolCall = accumulator.finish(index++);
+            if (toolCall != null) {
+                toolSeen.set(true);
+                result.add(AiStreamEvent.toolCall(toolCall, requestId));
+            }
+        }
+        return result;
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static final class ResponseToolCallAccumulator {
+        private String callId;
+        private String name;
+        private final StringBuilder arguments = new StringBuilder();
+
+        private void merge(String newCallId,
+                           String newName,
+                           String newArguments,
+                           boolean append) {
+            if (newCallId != null && !newCallId.isBlank()) {
+                callId = newCallId;
+            }
+            if (newName != null && !newName.isBlank()) {
+                name = newName;
+            }
+            if (newArguments != null) {
+                if (!append) {
+                    arguments.setLength(0);
+                }
+                arguments.append(newArguments);
+            }
+        }
+
+        private AiToolCall finish(int index) {
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            return new AiToolCall(
+                    callId == null || callId.isBlank() ? "call_" + index : callId,
+                    name,
+                    arguments.isEmpty() ? "{}" : arguments.toString());
+        }
     }
 
     private String responseOutputText(JsonNode output) {

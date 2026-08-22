@@ -88,8 +88,13 @@
         FROM document
         JOIN workspace w ON w.id = document.workspace_id AND w.status = 'ACTIVE'
         <where>
+            NOT EXISTS (
+                SELECT 1
+                FROM dataset ds
+                WHERE ds.document_id = document.id
+            )
             <if test="workspaceId != null">
-                document.workspace_id = #{workspaceId}
+                AND document.workspace_id = #{workspaceId}
             </if>
         </where>
         ORDER BY document.created_at DESC, document.id DESC
@@ -101,8 +106,13 @@
         FROM document
         JOIN workspace w ON w.id = document.workspace_id AND w.status = 'ACTIVE'
         <where>
+            NOT EXISTS (
+                SELECT 1
+                FROM dataset ds
+                WHERE ds.document_id = document.id
+            )
             <if test="workspaceId != null">
-                document.workspace_id = #{workspaceId}
+                AND document.workspace_id = #{workspaceId}
             </if>
         </where>
     </select>

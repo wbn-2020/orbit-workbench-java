@@ -30,6 +30,7 @@ public final class ArtifactDtos {
             String title,
             String artifactType,
             Integer currentVersion,
+            String contentFormat,
             String content,
             Instant updatedAt,
             Instant createdAt

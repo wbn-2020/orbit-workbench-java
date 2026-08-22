@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -58,6 +59,36 @@ public class AgentRunWorker {
     private final SseHub sseHub;
     private final TransactionTemplate transactionTemplate;
     private final AgentRuntimeProperties runtimeProperties;
+    private final DataAnalysisAgentRunner dataAnalysisAgentRunner;
+
+    @Autowired
+    public AgentRunWorker(AgentRunMapper agentRunMapper,
+                          ModelCallMapper modelCallMapper,
+                          AgentDefinitionService agentDefinitionService,
+                          TaskService taskService,
+                          AiConnectionService connectionService,
+                          DocumentService documentService,
+                          ArtifactService artifactService,
+                          ModelGateway modelGateway,
+                          RunEventService runEventService,
+                          SseHub sseHub,
+                          TransactionTemplate transactionTemplate,
+                          AgentRuntimeProperties runtimeProperties,
+                          DataAnalysisAgentRunner dataAnalysisAgentRunner) {
+        this.agentRunMapper = agentRunMapper;
+        this.modelCallMapper = modelCallMapper;
+        this.agentDefinitionService = agentDefinitionService;
+        this.taskService = taskService;
+        this.connectionService = connectionService;
+        this.documentService = documentService;
+        this.artifactService = artifactService;
+        this.modelGateway = modelGateway;
+        this.runEventService = runEventService;
+        this.sseHub = sseHub;
+        this.transactionTemplate = transactionTemplate;
+        this.runtimeProperties = runtimeProperties;
+        this.dataAnalysisAgentRunner = dataAnalysisAgentRunner;
+    }
 
     public AgentRunWorker(AgentRunMapper agentRunMapper,
                           ModelCallMapper modelCallMapper,
@@ -71,18 +102,20 @@ public class AgentRunWorker {
                           SseHub sseHub,
                           TransactionTemplate transactionTemplate,
                           AgentRuntimeProperties runtimeProperties) {
-        this.agentRunMapper = agentRunMapper;
-        this.modelCallMapper = modelCallMapper;
-        this.agentDefinitionService = agentDefinitionService;
-        this.taskService = taskService;
-        this.connectionService = connectionService;
-        this.documentService = documentService;
-        this.artifactService = artifactService;
-        this.modelGateway = modelGateway;
-        this.runEventService = runEventService;
-        this.sseHub = sseHub;
-        this.transactionTemplate = transactionTemplate;
-        this.runtimeProperties = runtimeProperties;
+        this(
+                agentRunMapper,
+                modelCallMapper,
+                agentDefinitionService,
+                taskService,
+                connectionService,
+                documentService,
+                artifactService,
+                modelGateway,
+                runEventService,
+                sseHub,
+                transactionTemplate,
+                runtimeProperties,
+                null);
     }
 
     public void execute(Long runId) {
@@ -115,6 +148,8 @@ public class AgentRunWorker {
         AtomicBoolean upstreamCompleted = new AtomicBoolean();
         AtomicReference<String> providerRequestId = new AtomicReference<>();
         AtomicReference<AiUsage> usage = new AtomicReference<>();
+        AtomicReference<ModelCallRecord> activeDataCall = new AtomicReference<>();
+        DataAnalysisRunResult dataAnalysisResult = null;
         TextDeltaBuffer deltaBuffer = TextDeltaBuffer.createDefault();
         StreamBudget streamBudget = new StreamBudget(runtimeProperties);
         Disposable heartbeat = null;
@@ -125,11 +160,28 @@ public class AgentRunWorker {
             Long connectionId = run.getConnectionId() == null
                     ? task.getConnectionId() : run.getConnectionId();
             connection = connectionService.getRuntimeConfig(connectionId);
+            if ("DATA_ANALYSIS".equals(task.getModuleType())) {
+                if (dataAnalysisAgentRunner == null) {
+                    throw new RunExecutionException(
+                            ErrorCode.UNSUPPORTED_CAPABILITY,
+                            "数据分析 AgentRunner 未配置");
+                }
+                dataAnalysisResult = dataAnalysisAgentRunner.execute(
+                        run,
+                        task,
+                        connection,
+                        requireRunPrompt(run),
+                        () -> checkControlState(runId),
+                        activeDataCall::set);
+                modelCall = dataAnalysisResult.finalModelCall();
+                completeDataAnalysisSuccess(run, task, dataAnalysisResult);
+                return;
+            }
             modelCall = createModelCall(run, connection);
             String prompt = buildPrompt(task);
             ModelCallRecord activeModelCall = modelCall;
             modelGateway.stream(new AiInvocation(connection,
-                            agentDefinitionService.requirePrompt(run.getAgentDefinitionId()),
+                            requireRunPrompt(run),
                             prompt, runId, modelCall.getId(), true,
                             AGENT_MAX_OUTPUT_TOKENS))
                     .doOnNext(event -> {
@@ -189,15 +241,28 @@ public class AgentRunWorker {
             }
             completeSuccess(run, task, modelCall, output.toString(),
                     providerRequestId.get(), usage.get());
-        } catch (RunCancelledException exception) {
+        } catch (AgentRunControlException exception) {
+            if (modelCall == null) {
+                modelCall = activeDataCall.get();
+            }
             flushBufferedTextWithoutControlCheck(
                     run, modelCall, deltaBuffer, providerRequestId.get());
-            finishCancelled(run, modelCall);
-        } catch (RunPausedException exception) {
-            flushBufferedTextWithoutControlCheck(
-                    run, modelCall, deltaBuffer, providerRequestId.get());
-            finishPaused(run, modelCall);
+            if (exception.type()
+                    == AgentRunControlException.Type.CANCELLED) {
+                finishCancelled(run, modelCall);
+            } else {
+                finishPaused(run, modelCall);
+            }
         } catch (Throwable exception) {
+            if (modelCall == null) {
+                modelCall = activeDataCall.get();
+            }
+            if (dataAnalysisResult != null && dataAnalysisAgentRunner != null) {
+                dataAnalysisAgentRunner.failArtifactStep(
+                        dataAnalysisResult,
+                        ErrorCode.TOOL_EXECUTION_FAILED,
+                        sanitize(exception.getMessage()));
+            }
             fail(run, modelCall, normalizeExecutionFailure(exception));
         } finally {
             if (heartbeat != null) {
@@ -310,10 +375,12 @@ public class AgentRunWorker {
             throw new RunExecutionException(ErrorCode.RESOURCE_NOT_FOUND, "运行不存在");
         }
         if ("CANCELLING".equals(latest.getStatus())) {
-            throw new RunCancelledException();
+            throw new AgentRunControlException(
+                    AgentRunControlException.Type.CANCELLED);
         }
         if ("PAUSING".equals(latest.getStatus())) {
-            throw new RunPausedException();
+            throw new AgentRunControlException(
+                    AgentRunControlException.Type.PAUSED);
         }
     }
 
@@ -346,6 +413,74 @@ public class AgentRunWorker {
         if (event != null) {
             sseHub.publish(event);
         }
+    }
+
+    private void completeDataAnalysisSuccess(
+            AgentRunRecord run,
+            TaskRecord task,
+            DataAnalysisRunResult result) {
+        transactionTemplate.executeWithoutResult(status -> {
+            ModelCallRecord call = result.finalModelCall();
+            modelCallMapper.updateFinished(
+                    call.getId(),
+                    "SUCCEEDED",
+                    Instant.now(),
+                    result.providerRequestId(),
+                    result.usage() == null
+                            ? null : result.usage().inputTokens(),
+                    result.usage() == null
+                            ? null : result.usage().outputTokens(),
+                    null,
+                    null);
+            if (agentRunMapper.updateStatus(
+                    run.getId(),
+                    "RUNNING",
+                    "SUCCEEDED",
+                    null,
+                    null,
+                    Instant.now()) != 1) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        ErrorCode.STATE_CONFLICT,
+                        "运行状态已变化，不能完成当前运行");
+            }
+            taskService.updateRunStatus(
+                    task.getId(), run.getId(), "SUCCEEDED");
+            artifactService.createInitialArtifact(
+                    new CreateInitialArtifactCommand(
+                            task.getWorkspaceId(),
+                            task.getId(),
+                            run.getId(),
+                            "ANALYSIS_REPORT",
+                            task.getTitle() + " - 分析报告",
+                            result.report(),
+                            "MARKDOWN",
+                            "数据分析 Agent 初始生成"));
+            int index = 1;
+            for (String chartSpec : result.chartSpecs()) {
+                artifactService.createInitialArtifact(
+                        new CreateInitialArtifactCommand(
+                                task.getWorkspaceId(),
+                                task.getId(),
+                                run.getId(),
+                                "CHART_SPEC",
+                                task.getTitle() + " - 图表 " + index++,
+                                chartSpec,
+                                "JSON",
+                                "数据分析 Agent 图表规格"));
+            }
+        });
+        dataAnalysisAgentRunner.completeArtifactStep(result);
+        RunEventRecord event = runEventService.append(
+                run.getId(),
+                result.finalModelCall().getId(),
+                "run.completed",
+                "数据分析运行已完成",
+                Map.of(
+                        "status", "SUCCEEDED",
+                        "outputLength", result.report().length(),
+                        "chartCount", result.chartSpecs().size()));
+        sseHub.publish(event);
     }
 
     private void finishCancelled(AgentRunRecord run, ModelCallRecord call) {
@@ -560,10 +695,11 @@ public class AgentRunWorker {
         // The immutable runtime record is eligible for collection after this method returns.
     }
 
-    private static final class RunCancelledException extends RuntimeException {
-    }
-
-    private static final class RunPausedException extends RuntimeException {
+    private String requireRunPrompt(AgentRunRecord run) {
+        return run.getAgentVersionId() == null
+                ? agentDefinitionService.requirePrompt(run.getAgentDefinitionId())
+                : agentDefinitionService.requirePrompt(
+                        run.getAgentVersionId(), run.getAgentDefinitionId());
     }
 
     private static final class StreamBudget {

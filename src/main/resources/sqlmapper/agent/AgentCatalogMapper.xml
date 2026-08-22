@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.agent.infrastructure.mapper.AgentCatalogMapper">
+
+    <resultMap id="DefinitionResultMap"
+               type="com.orbitworkbench.agent.domain.AgentDefinitionDetailRecord">
+        <id property="id" column="id"/>
+        <result property="workspaceId" column="workspace_id"/>
+        <result property="code" column="code"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="status" column="status"/>
+        <result property="defaultConnectionId" column="default_connection_id"/>
+        <result property="defaultModelProfileId" column="default_model_profile_id"/>
+        <result property="promptVersionId" column="prompt_version_id"/>
+        <result property="publishedVersionId" column="published_version_id"/>
+        <result property="version" column="version"/>
+        <result property="promptTemplateId" column="prompt_template_id"/>
+        <result property="promptTemplateName" column="prompt_template_name"/>
+        <result property="promptVersionNumber" column="prompt_version_number"/>
+        <result property="promptContent" column="prompt_content"/>
+        <result property="promptVariablesJson" column="prompt_variables_json"/>
+        <result property="configurationJson" column="configuration_json"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="PromptVersionResultMap"
+               type="com.orbitworkbench.agent.domain.PromptVersionDetailRecord">
+        <id property="id" column="id"/>
+        <result property="templateId" column="template_id"/>
+        <result property="templateName" column="template_name"/>
+        <result property="purpose" column="purpose"/>
+        <result property="versionNumber" column="version_number"/>
+        <result property="content" column="content"/>
+        <result property="variablesJson" column="variables_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="DefinitionColumns">
+        ad.id, ad.workspace_id, ad.code, ad.name, ad.description, ad.status,
+        ad.default_connection_id, ad.default_model_profile_id,
+        ad.prompt_version_id, ad.published_version_id, ad.version,
+        pv.template_id AS prompt_template_id,
+        pt.name AS prompt_template_name,
+        pv.version_number AS prompt_version_number,
+        pv.content AS prompt_content,
+        pv.variables_json AS prompt_variables_json,
+        ad.configuration_json, ad.created_at, ad.updated_at
+    </sql>
+
+    <select id="findDefinitions" resultMap="DefinitionResultMap">
+        SELECT <include refid="DefinitionColumns"/>
+        FROM agent_definition ad
+        LEFT JOIN prompt_version pv ON pv.id = ad.prompt_version_id
+        LEFT JOIN prompt_template pt ON pt.id = pv.template_id
+        ORDER BY ad.name, ad.id
+    </select>
+
+    <select id="findDefinition" resultMap="DefinitionResultMap">
+        SELECT <include refid="DefinitionColumns"/>
+        FROM agent_definition ad
+        LEFT JOIN prompt_version pv ON pv.id = ad.prompt_version_id
+        LEFT JOIN prompt_template pt ON pt.id = pv.template_id
+        WHERE ad.id = #{id}
+    </select>
+
+    <select id="findPromptVersions" resultMap="PromptVersionResultMap">
+        SELECT pv.id, pv.template_id, pt.name AS template_name,
+               pt.purpose, pv.version_number, pv.content,
+               pv.variables_json, pv.created_at
+        FROM prompt_version pv
+        JOIN prompt_template pt ON pt.id = pv.template_id
+        WHERE pv.template_id = #{templateId}
+        ORDER BY pv.version_number DESC, pv.id DESC
+    </select>
+
+    <select id="findPromptTemplateId" resultType="long">
+        SELECT id
+        FROM prompt_template
+        WHERE id = #{templateId}
+    </select>
+</mapper>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.workflow.infrastructure.mapper.WorkflowEdgeMapper">
+
+    <resultMap id="EdgeResultMap"
+               type="com.orbitworkbench.workflow.domain.WorkflowEdgeRecord">
+        <id property="id" column="id"/>
+        <result property="workflowVersionId" column="workflow_version_id"/>
+        <result property="sourceNodeId" column="source_node_id"/>
+        <result property="targetNodeId" column="target_node_id"/>
+        <result property="sourceNodeKey" column="source_node_key"/>
+        <result property="targetNodeKey" column="target_node_key"/>
+        <result property="branchKey" column="branch_key"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert"
+            parameterType="com.orbitworkbench.workflow.domain.WorkflowEdgeRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO workflow_edge (
+            workflow_version_id, source_node_id, target_node_id,
+            branch_key, sort_order, created_at
+        ) VALUES (
+            #{workflowVersionId}, #{sourceNodeId}, #{targetNodeId},
+            #{branchKey}, #{sortOrder}, #{createdAt}
+        )
+    </insert>
+
+    <select id="findByVersionId" resultMap="EdgeResultMap">
+        SELECT e.id, e.workflow_version_id, e.source_node_id, e.target_node_id,
+               source.node_key AS source_node_key,
+               target.node_key AS target_node_key,
+               e.branch_key, e.sort_order, e.created_at
+        FROM workflow_edge e
+        JOIN workflow_node source ON source.id = e.source_node_id
+        JOIN workflow_node target ON target.id = e.target_node_id
+        WHERE e.workflow_version_id = #{workflowVersionId}
+        ORDER BY e.source_node_id, e.sort_order, e.id
+    </select>
+
+    <delete id="deleteByVersionId">
+        DELETE FROM workflow_edge
+        WHERE workflow_version_id = #{workflowVersionId}
+    </delete>
+</mapper>

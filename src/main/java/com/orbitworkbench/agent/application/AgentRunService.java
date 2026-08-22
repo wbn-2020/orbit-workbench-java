@@ -4,6 +4,7 @@ import com.orbitworkbench.agent.api.AgentRunDtos.AgentRunResponse;
 import com.orbitworkbench.agent.api.AgentRunDtos.ModelCallResponse;
 import com.orbitworkbench.agent.api.AgentRunDtos.RunCreatedResponse;
 import com.orbitworkbench.agent.domain.AgentRunRecord;
+import com.orbitworkbench.agent.domain.AgentVersionRecord;
 import com.orbitworkbench.agent.domain.ModelCallRecord;
 import com.orbitworkbench.agent.domain.RunEventRecord;
 import com.orbitworkbench.agent.infrastructure.mapper.AgentRunMapper;
@@ -83,12 +84,21 @@ public class AgentRunService {
                                          Long retryOfRunId,
                                          java.util.Set<String> allowedTaskStatuses,
                                          String command) {
-        taskService.validateLockedRunInput(lockedTask);
         AgentRunRecord run = new AgentRunRecord();
         run.setTaskId(lockedTask.getId());
-        run.setAgentDefinitionId(
-                agentDefinitionService.requireActiveId(lockedTask.getModuleType()));
-        run.setConnectionId(lockedTask.getConnectionId());
+        AgentVersionRecord version = agentDefinitionService.requirePublishedVersion(
+                lockedTask.getModuleType(), lockedTask.getWorkspaceId());
+        if (version == null) {
+            run.setAgentDefinitionId(
+                    agentDefinitionService.requireActiveId(lockedTask.getModuleType()));
+            run.setConnectionId(lockedTask.getConnectionId());
+        } else {
+            run.setAgentDefinitionId(version.getAgentDefinitionId());
+            run.setAgentVersionId(version.getId());
+            run.setConnectionId(version.getConnectionId() == null
+                    ? lockedTask.getConnectionId() : version.getConnectionId());
+        }
+        taskService.validateLockedRunInput(lockedTask, run.getConnectionId());
         run.setStatus("QUEUED");
         run.setRetryOfRunId(retryOfRunId);
         run.setTraceId(MDC.get("traceId") == null
@@ -104,7 +114,8 @@ public class AgentRunService {
         sseHub.publishAfterCommit(event);
         submitAfterCommit(run.getId());
         return new RunCreatedResponse(
-                run.getId(), "QUEUED", "RUNNING", command, retryOfRunId);
+                run.getId(), "QUEUED", "RUNNING", command, retryOfRunId,
+                run.getAgentVersionId());
     }
 
     @Transactional(readOnly = true)
@@ -116,6 +127,13 @@ public class AgentRunService {
     public List<AgentRunResponse> listByTask(Long taskId) {
         taskService.requireTask(taskId);
         return agentRunMapper.findByTaskId(taskId).stream()
+                .map(run -> toResponse(run, false))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AgentRunResponse> listByAgentDefinition(Long agentDefinitionId) {
+        return agentRunMapper.findByAgentDefinitionId(agentDefinitionId).stream()
                 .map(run -> toResponse(run, false))
                 .toList();
     }
@@ -351,7 +369,8 @@ public class AgentRunService {
                 run.getStatus(),
                 taskStatus,
                 command,
-                run.getRetryOfRunId());
+                run.getRetryOfRunId(),
+                run.getAgentVersionId());
     }
 
     private AgentRunResponse toResponse(AgentRunRecord run, boolean includeDetails) {
@@ -370,6 +389,7 @@ public class AgentRunService {
                 run.getId(),
                 run.getTaskId(),
                 run.getAgentDefinitionId(),
+                run.getAgentVersionId(),
                 run.getConnectionId(),
                 run.getStatus(),
                 run.getCurrentStep(),

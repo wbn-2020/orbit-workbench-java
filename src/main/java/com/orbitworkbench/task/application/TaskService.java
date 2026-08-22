@@ -25,10 +25,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskService {
 
     private static final Set<String> EDITABLE_STATUSES = Set.of("DRAFT", "READY", "PAUSED");
-    private static final Set<String> MODULE_TYPES = Set.of("TECH_LEARNING");
+    private static final Set<String> MODULE_TYPES = Set.of("TECH_LEARNING", "DATA_ANALYSIS");
     private static final Set<String> PRIORITIES = Set.of("LOW", "NORMAL", "HIGH");
-    private static final Set<String> ARTIFACT_TYPES =
+    private static final Set<String> TECH_LEARNING_ARTIFACT_TYPES =
             Set.of("LEARNING_NOTE", "QUIZ", "SUMMARY");
+    private static final Set<String> DATA_ANALYSIS_ARTIFACT_TYPES =
+            Set.of("ANALYSIS_REPORT", "CHART_SPEC", "DATA_EXPORT");
 
     private final TaskMapper taskMapper;
 
@@ -67,9 +69,21 @@ public class TaskService {
 
     @Transactional
     public TaskResponse create(CreateTaskRequest request, String idempotencyKey) {
+        return create(request, idempotencyKey, null);
+    }
+
+    @Transactional
+    public TaskResponse create(CreateTaskRequest request,
+                               String idempotencyKey,
+                               String idempotencyScope) {
         String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
         validateValues(
                 request.moduleType(), request.priority(), request.expectedArtifactType());
+        if ("DATA_ANALYSIS".equals(request.moduleType().trim().toUpperCase())
+                && (idempotencyScope == null || idempotencyScope.isBlank())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
+                    "DATA_ANALYSIS 必须通过数据分析任务接口创建");
+        }
         List<Long> documentIds = normalizedDocumentIds(request.documentIds());
         String moduleType = request.moduleType().trim().toUpperCase();
         String title = normalizeRequiredText(request.title(), "title", 120);
@@ -86,7 +100,8 @@ public class TaskService {
                         description,
                         expectedArtifactType,
                         priority,
-                        documentIds);
+                        documentIds,
+                        idempotencyScope);
 
         boolean ownsReservation = normalizedIdempotencyKey == null
                 || taskMapper.insertCreateReservation(
@@ -147,6 +162,13 @@ public class TaskService {
 
     @Transactional
     public TaskResponse update(Long id, UpdateTaskRequest request) {
+        return update(id, request, null);
+    }
+
+    @Transactional
+    public TaskResponse update(Long id,
+                               UpdateTaskRequest request,
+                               String updateScope) {
         TaskRecord current = requireTaskForUpdate(id);
         if (!EDITABLE_STATUSES.contains(current.getStatus())) {
             throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
@@ -154,11 +176,21 @@ public class TaskService {
         }
         validateValues(
                 request.moduleType(), request.priority(), request.expectedArtifactType());
+        String requestedModuleType = request.moduleType().trim().toUpperCase();
+        if (!requestedModuleType.equals(current.getModuleType())) {
+            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
+                    "moduleType 创建后不可修改");
+        }
+        if ("DATA_ANALYSIS".equals(current.getModuleType())
+                && (updateScope == null || updateScope.isBlank())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
+                    "DATA_ANALYSIS 必须通过数据分析任务接口修改");
+        }
         List<Long> documentIds = normalizedDocumentIds(request.documentIds());
         validateReferences(current.getWorkspaceId(), request.connectionId(), documentIds);
 
         current.setConnectionId(request.connectionId());
-        current.setModuleType(request.moduleType().trim().toUpperCase());
+        current.setModuleType(requestedModuleType);
         current.setTitle(normalizeRequiredText(request.title(), "title", 120));
         current.setDescription(normalizeRequiredText(request.description(), "description", 2000));
         current.setExpectedArtifactType(request.expectedArtifactType().trim().toUpperCase());
@@ -193,8 +225,13 @@ public class TaskService {
 
     @Transactional
     public void validateLockedRunInput(TaskRecord task) {
-        if (task.getConnectionId() == null
-                || taskMapper.lockUsableConnection(task.getConnectionId()) == null) {
+        validateLockedRunInput(task, task.getConnectionId());
+    }
+
+    @Transactional
+    public void validateLockedRunInput(TaskRecord task, Long connectionId) {
+        if (connectionId == null
+                || taskMapper.lockUsableConnection(connectionId) == null) {
             throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
                     "AI Connection 不存在、未启用或已删除");
         }
@@ -255,17 +292,22 @@ public class TaskService {
     private void validateValues(String moduleType,
                                 String priority,
                                 String expectedArtifactType) {
-        if (!MODULE_TYPES.contains(moduleType.trim().toUpperCase())) {
+        String normalizedModuleType = moduleType.trim().toUpperCase();
+        String normalizedArtifactType = expectedArtifactType.trim().toUpperCase();
+        if (!MODULE_TYPES.contains(normalizedModuleType)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
-                    "MVP 仅支持 TECH_LEARNING 任务");
+                    "moduleType 必须为 TECH_LEARNING 或 DATA_ANALYSIS");
         }
         if (!PRIORITIES.contains(priority.trim().toUpperCase())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
                     "priority 必须为 LOW、NORMAL 或 HIGH");
         }
-        if (!ARTIFACT_TYPES.contains(expectedArtifactType.trim().toUpperCase())) {
+        Set<String> supportedArtifactTypes = "DATA_ANALYSIS".equals(normalizedModuleType)
+                ? DATA_ANALYSIS_ARTIFACT_TYPES
+                : TECH_LEARNING_ARTIFACT_TYPES;
+        if (!supportedArtifactTypes.contains(normalizedArtifactType)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
-                    "expectedArtifactType 必须为 LEARNING_NOTE、QUIZ 或 SUMMARY");
+                    "expectedArtifactType 与 moduleType 不匹配");
         }
     }
 
@@ -331,7 +373,8 @@ public class TaskService {
                                       String description,
                                       String expectedArtifactType,
                                       String priority,
-                                      List<Long> documentIds) {
+                                      List<Long> documentIds,
+                                      String idempotencyScope) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             appendFingerprintField(digest, workspaceId);
@@ -342,6 +385,7 @@ public class TaskService {
             appendFingerprintField(digest, expectedArtifactType);
             appendFingerprintField(digest, priority);
             appendFingerprintField(digest, documentIds);
+            appendFingerprintField(digest, idempotencyScope);
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 不可用", exception);

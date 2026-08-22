@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.agent.infrastructure.mapper.PromptDefinitionMapper">
+
+    <insert id="insertTemplate"
+            parameterType="com.orbitworkbench.agent.domain.PromptTemplateRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO prompt_template (name, purpose, created_at, updated_at)
+        VALUES (#{name}, #{purpose}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <insert id="insertVersion"
+            parameterType="com.orbitworkbench.agent.domain.PromptVersionRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO prompt_version (
+            template_id, version_number, content, variables_json, created_at
+        ) VALUES (
+            #{templateId}, #{versionNumber}, #{content}, #{variablesJson}, #{createdAt}
+        )
+    </insert>
+
+    <select id="nextVersionNumber" resultType="int">
+        SELECT COALESCE(MAX(version_number), 0) + 1
+        FROM prompt_version
+        WHERE template_id = #{templateId}
+    </select>
+
+    <select id="findVersionId" resultType="long">
+        SELECT id
+        FROM prompt_version
+        WHERE id = #{id}
+    </select>
+</mapper>

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.workflow.infrastructure.mapper.WorkflowDefinitionMapper">
+
+    <resultMap id="DefinitionResultMap"
+               type="com.orbitworkbench.workflow.domain.WorkflowDefinitionRecord">
+        <id property="id" column="id"/>
+        <result property="workspaceId" column="workspace_id"/>
+        <result property="code" column="code"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="status" column="status"/>
+        <result property="publishedVersionId" column="published_version_id"/>
+        <result property="version" column="version"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="Columns">
+        id, workspace_id, code, name, description, status,
+        published_version_id, version, created_at, updated_at
+    </sql>
+
+    <insert id="insert"
+            parameterType="com.orbitworkbench.workflow.domain.WorkflowDefinitionRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO workflow_definition (
+            workspace_id, code, name, description, status,
+            published_version_id, version, created_at, updated_at
+        ) VALUES (
+            #{workspaceId}, #{code}, #{name}, #{description}, #{status},
+            #{publishedVersionId}, #{version}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findById" resultMap="DefinitionResultMap">
+        SELECT <include refid="Columns"/>
+        FROM workflow_definition
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByIdForUpdate" resultMap="DefinitionResultMap">
+        SELECT <include refid="Columns"/>
+        FROM workflow_definition
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
+    <select id="findByWorkspaceCode" resultMap="DefinitionResultMap">
+        SELECT <include refid="Columns"/>
+        FROM workflow_definition
+        WHERE workspace_id = #{workspaceId}
+          AND code = #{code}
+    </select>
+
+    <select id="findByWorkspaceId" resultMap="DefinitionResultMap">
+        SELECT <include refid="Columns"/>
+        FROM workflow_definition
+        WHERE workspace_id = #{workspaceId}
+        ORDER BY updated_at DESC, id DESC
+    </select>
+
+    <select id="findPageByWorkspaceId" resultMap="DefinitionResultMap">
+        SELECT <include refid="Columns"/>
+        FROM workflow_definition
+        WHERE workspace_id = #{workspaceId}
+        <choose>
+            <when test="status == 'DRAFT'">
+                AND status = 'ACTIVE'
+                AND published_version_id IS NULL
+            </when>
+            <when test="status == 'PUBLISHED'">
+                AND status = 'ACTIVE'
+                AND published_version_id IS NOT NULL
+            </when>
+            <when test="status == 'DISABLED'">
+                AND status = 'DISABLED'
+            </when>
+        </choose>
+        ORDER BY updated_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByWorkspaceId" resultType="long">
+        SELECT COUNT(*)
+        FROM workflow_definition
+        WHERE workspace_id = #{workspaceId}
+        <choose>
+            <when test="status == 'DRAFT'">
+                AND status = 'ACTIVE'
+                AND published_version_id IS NULL
+            </when>
+            <when test="status == 'PUBLISHED'">
+                AND status = 'ACTIVE'
+                AND published_version_id IS NOT NULL
+            </when>
+            <when test="status == 'DISABLED'">
+                AND status = 'DISABLED'
+            </when>
+        </choose>
+    </select>
+
+    <update id="updateMetadata">
+        UPDATE workflow_definition
+        SET name = #{definition.name},
+            description = #{definition.description},
+            version = version + 1,
+            updated_at = #{definition.updatedAt}
+        WHERE id = #{definition.id}
+          AND version = #{expectedVersion}
+          AND status = 'ACTIVE'
+    </update>
+
+    <update id="setPublishedVersion">
+        UPDATE workflow_definition
+        SET status = 'ACTIVE',
+            published_version_id = #{versionId},
+            version = version + 1,
+            updated_at = #{now}
+        WHERE id = #{id}
+          AND status = 'ACTIVE'
+    </update>
+
+    <update id="disable">
+        UPDATE workflow_definition
+        SET status = 'DISABLED',
+            version = version + 1,
+            updated_at = #{now}
+        WHERE id = #{id}
+          AND status = 'ACTIVE'
+    </update>
+</mapper>

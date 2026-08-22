@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.artifactexport.infrastructure.mapper.ArtifactExportMapper">
+
+    <resultMap id="ArtifactExportResultMap"
+               type="com.orbitworkbench.artifactexport.domain.ArtifactExportRecord">
+        <id property="id" column="id"/>
+        <result property="artifactId" column="artifact_id"/>
+        <result property="artifactVersionId" column="artifact_version_id"/>
+        <result property="exportKey" column="export_key"/>
+        <result property="requestFingerprint" column="request_fingerprint"/>
+        <result property="format" column="format"/>
+        <result property="status" column="status"/>
+        <result property="storageRef" column="storage_ref"/>
+        <result property="sizeBytes" column="size_bytes"/>
+        <result property="contentHash" column="content_hash"/>
+        <result property="errorCode" column="error_code"/>
+        <result property="errorSummary" column="error_summary"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="workspaceId" column="workspace_id"/>
+        <result property="taskId" column="task_id"/>
+        <result property="sourceRunId" column="source_run_id"/>
+        <result property="datasetId" column="dataset_id"/>
+        <result property="sheetId" column="sheet_id"/>
+        <result property="artifactType" column="artifact_type"/>
+        <result property="artifactTitle" column="artifact_title"/>
+        <result property="versionNumber" column="version_number"/>
+        <result property="sourceContentRef" column="source_content_ref"/>
+        <result property="sourceContentFormat" column="source_content_format"/>
+    </resultMap>
+
+    <sql id="ExportColumns">
+        artifact_export.id,
+        artifact_export.artifact_id,
+        artifact_export.artifact_version_id,
+        artifact_export.export_key,
+        artifact_export.request_fingerprint,
+        artifact_export.format,
+        artifact_export.status,
+        artifact_export.storage_ref,
+        artifact_export.size_bytes,
+        artifact_export.content_hash,
+        artifact_export.error_code,
+        artifact_export.error_summary,
+        artifact_export.created_at,
+        artifact_export.updated_at,
+        artifact_export.finished_at,
+        artifact.workspace_id,
+        artifact.task_id,
+        artifact.source_run_id,
+        data_analysis_task.dataset_id,
+        data_analysis_task.sheet_id,
+        artifact.artifact_type,
+        artifact.title AS artifact_title,
+        artifact_version.version_number,
+        artifact_version.content_ref AS source_content_ref,
+        artifact_version.content_format AS source_content_format
+    </sql>
+
+    <sql id="ExportFrom">
+        FROM artifact_export
+        JOIN artifact
+          ON artifact.id = artifact_export.artifact_id
+        JOIN artifact_version
+          ON artifact_version.id = artifact_export.artifact_version_id
+         AND artifact_version.artifact_id = artifact.id
+        LEFT JOIN data_analysis_task
+          ON data_analysis_task.task_id = artifact.task_id
+    </sql>
+
+    <select id="findSourceForUpdate" resultMap="ArtifactExportResultMap">
+        SELECT NULL AS id,
+               artifact.id AS artifact_id,
+               artifact_version.id AS artifact_version_id,
+               NULL AS export_key,
+               NULL AS request_fingerprint,
+               artifact_version.content_format AS format,
+               NULL AS status,
+               NULL AS storage_ref,
+               NULL AS size_bytes,
+               NULL AS content_hash,
+               NULL AS error_code,
+               NULL AS error_summary,
+               NULL AS created_at,
+               NULL AS updated_at,
+               NULL AS finished_at,
+               artifact.workspace_id,
+               artifact.task_id,
+               artifact.source_run_id,
+               data_analysis_task.dataset_id,
+               data_analysis_task.sheet_id,
+               artifact.artifact_type,
+               artifact.title AS artifact_title,
+               artifact_version.version_number,
+               artifact_version.content_ref AS source_content_ref,
+               artifact_version.content_format AS source_content_format
+        FROM artifact
+        JOIN workspace
+          ON workspace.id = artifact.workspace_id
+         AND workspace.status = 'ACTIVE'
+        JOIN artifact_version
+          ON artifact_version.id = #{artifactVersionId}
+         AND artifact_version.artifact_id = artifact.id
+        LEFT JOIN data_analysis_task
+          ON data_analysis_task.task_id = artifact.task_id
+        WHERE artifact.id = #{artifactId}
+          AND artifact.status = 'READY'
+        FOR UPDATE
+    </select>
+
+    <select id="findByExportKeyForUpdate" resultMap="ArtifactExportResultMap">
+        SELECT <include refid="ExportColumns"/>
+        <include refid="ExportFrom"/>
+        WHERE artifact_export.export_key = #{exportKey}
+        FOR UPDATE
+    </select>
+
+    <insert id="insertPending"
+            parameterType="com.orbitworkbench.artifactexport.domain.ArtifactExportRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT IGNORE INTO artifact_export (
+            artifact_id, artifact_version_id, export_key, request_fingerprint,
+            format, status, storage_ref, size_bytes, content_hash,
+            error_code, error_summary, created_at, updated_at, finished_at
+        ) VALUES (
+            #{artifactId}, #{artifactVersionId}, #{exportKey}, #{requestFingerprint},
+            #{format}, #{status}, NULL, NULL, NULL,
+            NULL, NULL, #{createdAt}, #{updatedAt}, NULL
+        )
+    </insert>
+
+    <select id="findById" resultMap="ArtifactExportResultMap">
+        SELECT <include refid="ExportColumns"/>
+        <include refid="ExportFrom"/>
+        JOIN workspace
+          ON workspace.id = artifact.workspace_id
+         AND workspace.status = 'ACTIVE'
+        WHERE artifact_export.id = #{id}
+    </select>
+
+    <select id="findDownloadableById" resultMap="ArtifactExportResultMap">
+        SELECT <include refid="ExportColumns"/>
+        <include refid="ExportFrom"/>
+        JOIN workspace
+          ON workspace.id = artifact.workspace_id
+         AND workspace.status = 'ACTIVE'
+        WHERE artifact_export.id = #{id}
+          AND artifact_export.status = 'SUCCEEDED'
+    </select>
+
+    <select id="findByArtifactId" resultMap="ArtifactExportResultMap">
+        SELECT <include refid="ExportColumns"/>
+        <include refid="ExportFrom"/>
+        JOIN workspace
+          ON workspace.id = artifact.workspace_id
+         AND workspace.status = 'ACTIVE'
+        WHERE artifact_export.artifact_id = #{artifactId}
+        ORDER BY artifact_export.created_at DESC, artifact_export.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countActiveArtifact" resultType="int">
+        SELECT COUNT(*)
+        FROM artifact
+        JOIN workspace
+          ON workspace.id = artifact.workspace_id
+         AND workspace.status = 'ACTIVE'
+        WHERE artifact.id = #{artifactId}
+          AND artifact.status = 'READY'
+    </select>
+
+    <update id="markRunning">
+        UPDATE artifact_export
+        SET status = 'RUNNING',
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+
+    <update id="markSucceeded">
+        UPDATE artifact_export
+        SET status = 'SUCCEEDED',
+            storage_ref = #{storageRef},
+            size_bytes = #{sizeBytes},
+            content_hash = #{contentHash},
+            error_code = NULL,
+            error_summary = NULL,
+            updated_at = #{finishedAt},
+            finished_at = #{finishedAt}
+        WHERE id = #{id}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="markFailed">
+        UPDATE artifact_export
+        SET status = 'FAILED',
+            storage_ref = NULL,
+            size_bytes = NULL,
+            content_hash = NULL,
+            error_code = #{errorCode},
+            error_summary = #{errorSummary},
+            updated_at = #{finishedAt},
+            finished_at = #{finishedAt}
+        WHERE id = #{id}
+          AND status IN ('PENDING', 'RUNNING')
+    </update>
+
+</mapper>

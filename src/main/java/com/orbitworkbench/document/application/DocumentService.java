@@ -158,6 +158,7 @@ public class DocumentService {
     @Transactional(readOnly = true)
     public DocumentContent readContent(Long id) {
         DocumentRecord document = requireDocument(id);
+        requireTextDocument(document);
         return new DocumentContent(document.getMediaType(),
                 storageService.readUtf8(document.getStorageRef()));
     }
@@ -183,6 +184,7 @@ public class DocumentService {
         return ids.stream()
                 .map(id -> {
                     DocumentRecord document = byId.get(id);
+                    requireTextDocument(document);
                     return new DocumentText(
                             document.getId(),
                             document.getName(),
@@ -190,6 +192,15 @@ public class DocumentService {
                     );
                 })
                 .toList();
+    }
+
+    private void requireTextDocument(DocumentRecord document) {
+        if (!"text/plain".equals(document.getMediaType())
+                && !"text/markdown".equals(document.getMediaType())) {
+            throw new ApiException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    ErrorCode.UNSUPPORTED_MEDIA_TYPE,
+                    "该文件不是可读取的文本资料");
+        }
     }
 
     @Transactional

@@ -1,5 +1,6 @@
 package com.orbitworkbench.artifact.application;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.artifact.api.ArtifactDtos.ArtifactDetailResponse;
 import com.orbitworkbench.artifact.api.ArtifactDtos.ArtifactSummaryResponse;
 import com.orbitworkbench.artifact.api.ArtifactDtos.ArtifactVersionResponse;
@@ -14,12 +15,15 @@ import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.PageResult;
 import com.orbitworkbench.shared.config.StorageProperties;
 import com.orbitworkbench.storage.application.LocalStorageService;
+import com.orbitworkbench.storage.application.StorageCleanupAuditService;
 import com.orbitworkbench.storage.domain.StoredFile;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,19 +35,43 @@ public class ArtifactService {
 
     private static final String READY = "READY";
     private static final String DEFAULT_CONTENT_FORMAT = "MARKDOWN";
+    private static final Set<String> CONTENT_FORMATS = Set.of("MARKDOWN", "JSON", "CSV");
+    private static final Set<String> ARTIFACT_TYPES = Set.of(
+            "LEARNING_NOTE", "QUIZ", "SUMMARY",
+            "ANALYSIS_REPORT", "CHART_SPEC", "DATA_EXPORT");
 
     private final ArtifactMapper artifactMapper;
     private final ArtifactVersionMapper artifactVersionMapper;
     private final LocalStorageService storageService;
+    private final StorageCleanupAuditService cleanupAuditService;
+    private final ArtifactContentPolicy contentPolicy;
     private final long maxArtifactBytes;
 
     public ArtifactService(ArtifactMapper artifactMapper,
                             ArtifactVersionMapper artifactVersionMapper,
                             LocalStorageService storageService,
                             StorageProperties storageProperties) {
+        this(
+                artifactMapper,
+                artifactVersionMapper,
+                storageService,
+                storageProperties,
+                new ObjectMapper(),
+                null);
+    }
+
+    @Autowired
+    public ArtifactService(ArtifactMapper artifactMapper,
+                           ArtifactVersionMapper artifactVersionMapper,
+                           LocalStorageService storageService,
+                           StorageProperties storageProperties,
+                           ObjectMapper objectMapper,
+                           StorageCleanupAuditService cleanupAuditService) {
         this.artifactMapper = artifactMapper;
         this.artifactVersionMapper = artifactVersionMapper;
         this.storageService = storageService;
+        this.cleanupAuditService = cleanupAuditService;
+        this.contentPolicy = new ArtifactContentPolicy(objectMapper);
         if (storageProperties.maxArtifactBytes() <= 0) {
             throw new IllegalStateException("orbit.storage.max-artifact-bytes 必须大于 0");
         }
@@ -95,7 +123,10 @@ public class ArtifactService {
     @Transactional
     public ArtifactDetailResponse createInitialArtifact(CreateInitialArtifactCommand command) {
         validateInitialCommand(command);
+        String artifactType = normalizeArtifactType(command.artifactType());
         String contentFormat = normalizeContentFormat(command.contentFormat());
+        validateTypeFormat(artifactType, contentFormat);
+        contentPolicy.validate(artifactType, contentFormat, command.content());
         StoredFile storedFile = storeContent(command.content());
         boolean rollbackCleanupRegistered = registerRollbackCleanup(storedFile);
         try {
@@ -104,8 +135,7 @@ public class ArtifactService {
             artifact.setWorkspaceId(command.workspaceId());
             artifact.setTaskId(command.taskId());
             artifact.setSourceRunId(command.sourceRunId());
-            artifact.setArtifactType(normalizeText(command.artifactType(), "artifactType", 64)
-                    .toUpperCase(Locale.ROOT));
+            artifact.setArtifactType(artifactType);
             artifact.setTitle(normalizeTitle(command.title()));
             artifact.setStatus(READY);
             artifact.setCreatedAt(now);
@@ -158,6 +188,13 @@ public class ArtifactService {
                     "成果版本已变化，请刷新后重试");
         }
 
+        String contentFormat = artifact.getCurrentContentFormat() == null
+                ? DEFAULT_CONTENT_FORMAT
+                : normalizeContentFormat(artifact.getCurrentContentFormat());
+        if (artifact.getArtifactType() != null) {
+            validateTypeFormat(artifact.getArtifactType(), contentFormat);
+        }
+        contentPolicy.validate(artifact.getArtifactType(), contentFormat, request.content());
         StoredFile storedFile = storeContent(request.content());
         boolean rollbackCleanupRegistered = registerRollbackCleanup(storedFile);
         try {
@@ -166,7 +203,7 @@ public class ArtifactService {
             version.setArtifactId(id);
             version.setVersionNumber(currentVersion + 1);
             version.setContentRef(storedFile.storageRef());
-            version.setContentFormat(DEFAULT_CONTENT_FORMAT);
+            version.setContentFormat(contentFormat);
             version.setChangeSummary("手动编辑");
             version.setCreatedAt(now);
             artifactVersionMapper.insert(version);
@@ -237,11 +274,33 @@ public class ArtifactService {
             throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
                     "contentFormat 长度不能超过 32");
         }
-        if (!DEFAULT_CONTENT_FORMAT.equals(normalized)) {
+        if (!CONTENT_FORMATS.contains(normalized)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
-                    "MVP 仅支持 MARKDOWN 成果格式");
+                    "contentFormat 必须为 MARKDOWN、JSON 或 CSV");
         }
         return normalized;
+    }
+
+    private String normalizeArtifactType(String artifactType) {
+        String normalized = normalizeText(artifactType, "artifactType", 64)
+                .toUpperCase(Locale.ROOT);
+        if (!ARTIFACT_TYPES.contains(normalized)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
+                    "artifactType 不受支持");
+        }
+        return normalized;
+    }
+
+    private void validateTypeFormat(String artifactType, String contentFormat) {
+        String expectedFormat = switch (artifactType) {
+            case "CHART_SPEC" -> "JSON";
+            case "DATA_EXPORT" -> "CSV";
+            default -> "MARKDOWN";
+        };
+        if (!expectedFormat.equals(contentFormat)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
+                    "成果类型与内容格式不匹配");
+        }
     }
 
     private String normalizeTitle(String title) {
@@ -270,6 +329,7 @@ public class ArtifactService {
             storageService.moveToTrash(storedFile.storageRef());
         } catch (RuntimeException trashException) {
             cause.addSuppressed(trashException);
+            recordCleanupFailure(storedFile.storageRef(), trashException);
         }
     }
 
@@ -283,13 +343,24 @@ public class ArtifactService {
                 if (status != TransactionSynchronization.STATUS_COMMITTED) {
                     try {
                         storageService.moveToTrash(storedFile.storageRef());
-                    } catch (RuntimeException ignored) {
-                        // The database transaction has already rolled back; preserve its outcome.
+                    } catch (RuntimeException cleanupException) {
+                        recordCleanupFailure(storedFile.storageRef(), cleanupException);
                     }
                 }
             }
         });
         return true;
+    }
+
+    private void recordCleanupFailure(String storageRef,
+                                      RuntimeException exception) {
+        if (cleanupAuditService != null) {
+            cleanupAuditService.record(
+                    "ARTIFACT",
+                    null,
+                    storageRef,
+                    exception);
+        }
     }
 
     private ArtifactSummaryResponse toSummary(ArtifactRecord artifact) {
@@ -317,6 +388,7 @@ public class ArtifactService {
                 artifact.getTitle(),
                 artifact.getArtifactType(),
                 artifact.getCurrentVersionNumber(),
+                artifact.getCurrentContentFormat(),
                 storageService.readUtf8(artifact.getCurrentContentRef()),
                 artifact.getUpdatedAt(),
                 artifact.getCreatedAt()

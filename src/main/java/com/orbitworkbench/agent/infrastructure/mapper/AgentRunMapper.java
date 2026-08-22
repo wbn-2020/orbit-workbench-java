@@ -14,6 +14,9 @@ public interface AgentRunMapper {
 
     List<AgentRunRecord> findByTaskId(@Param("taskId") Long taskId);
 
+    List<AgentRunRecord> findByAgentDefinitionId(
+            @Param("agentDefinitionId") Long agentDefinitionId);
+
     int markRunning(@Param("id") Long id,
                     @Param("now") java.time.Instant now);
 

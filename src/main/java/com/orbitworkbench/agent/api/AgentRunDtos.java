@@ -12,9 +12,10 @@ public final class AgentRunDtos {
                                      String status,
                                      String taskStatus,
                                      String command,
-                                     Long retryOfRunId) {
+                                     Long retryOfRunId,
+                                     Long agentVersionId) {
         public RunCreatedResponse(Long runId, String status) {
-            this(runId, status, null, "START", null);
+            this(runId, status, null, "START", null, null);
         }
     }
 
@@ -22,7 +23,8 @@ public final class AgentRunDtos {
                                      String status,
                                      String taskStatus,
                                      String command,
-                                     Long retryOfRunId) {
+                                     Long retryOfRunId,
+                                     Long agentVersionId) {
         public static RunCommandResponse from(AgentRunResponse run,
                                                String taskStatus,
                                                String command) {
@@ -31,7 +33,8 @@ public final class AgentRunDtos {
                     run.status(),
                     taskStatus,
                     command,
-                    run.retryOfRunId()
+                    run.retryOfRunId(),
+                    run.agentVersionId()
             );
         }
     }
@@ -40,6 +43,7 @@ public final class AgentRunDtos {
             Long id,
             Long taskId,
             Long agentDefinitionId,
+            Long agentVersionId,
             Long connectionId,
             String status,
             String currentStep,
@@ -86,6 +90,24 @@ public final class AgentRunDtos {
             String summary,
             Object data,
             Instant occurredAt
+    ) {
+    }
+
+    public record AgentRunStepResponse(
+            Long id,
+            Long runId,
+            Integer stepNumber,
+            String stepType,
+            String title,
+            String status,
+            Long modelCallId,
+            Long toolCallId,
+            String inputSummary,
+            String outputSummary,
+            Instant startedAt,
+            Instant finishedAt,
+            String errorCode,
+            String errorSummary
     ) {
     }
 }
