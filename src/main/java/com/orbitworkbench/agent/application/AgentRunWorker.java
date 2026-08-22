@@ -16,6 +16,7 @@ import com.orbitworkbench.artifact.application.ArtifactService;
 import com.orbitworkbench.artifact.application.CreateInitialArtifactCommand;
 import com.orbitworkbench.document.api.DocumentDtos.DocumentText;
 import com.orbitworkbench.document.application.DocumentService;
+import com.orbitworkbench.memory.application.MemoryService;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.config.AgentRuntimeProperties;
@@ -60,6 +61,7 @@ public class AgentRunWorker {
     private final TransactionTemplate transactionTemplate;
     private final AgentRuntimeProperties runtimeProperties;
     private final DataAnalysisAgentRunner dataAnalysisAgentRunner;
+    private final MemoryService memoryService;
 
     @Autowired
     public AgentRunWorker(AgentRunMapper agentRunMapper,
@@ -74,7 +76,8 @@ public class AgentRunWorker {
                           SseHub sseHub,
                           TransactionTemplate transactionTemplate,
                           AgentRuntimeProperties runtimeProperties,
-                          DataAnalysisAgentRunner dataAnalysisAgentRunner) {
+                          DataAnalysisAgentRunner dataAnalysisAgentRunner,
+                          MemoryService memoryService) {
         this.agentRunMapper = agentRunMapper;
         this.modelCallMapper = modelCallMapper;
         this.agentDefinitionService = agentDefinitionService;
@@ -88,6 +91,7 @@ public class AgentRunWorker {
         this.transactionTemplate = transactionTemplate;
         this.runtimeProperties = runtimeProperties;
         this.dataAnalysisAgentRunner = dataAnalysisAgentRunner;
+        this.memoryService = memoryService;
     }
 
     public AgentRunWorker(AgentRunMapper agentRunMapper,
@@ -115,6 +119,7 @@ public class AgentRunWorker {
                 sseHub,
                 transactionTemplate,
                 runtimeProperties,
+                null,
                 null);
     }
 
@@ -157,6 +162,11 @@ public class AgentRunWorker {
             agentRunMapper.touchHeartbeat(runId, Instant.now());
             heartbeat = startHeartbeat(runId);
             task = taskService.requireTask(run.getTaskId());
+            String systemPrompt = requireRunPrompt(run);
+            if (memoryService != null) {
+                systemPrompt = memoryService.appendConfirmedInjection(
+                        systemPrompt, task.getWorkspaceId());
+            }
             Long connectionId = run.getConnectionId() == null
                     ? task.getConnectionId() : run.getConnectionId();
             connection = connectionService.getRuntimeConfig(connectionId);
@@ -170,7 +180,7 @@ public class AgentRunWorker {
                         run,
                         task,
                         connection,
-                        requireRunPrompt(run),
+                        systemPrompt,
                         () -> checkControlState(runId),
                         activeDataCall::set);
                 modelCall = dataAnalysisResult.finalModelCall();
@@ -181,7 +191,7 @@ public class AgentRunWorker {
             String prompt = buildPrompt(task);
             ModelCallRecord activeModelCall = modelCall;
             modelGateway.stream(new AiInvocation(connection,
-                            requireRunPrompt(run),
+                            systemPrompt,
                             prompt, runId, modelCall.getId(), true,
                             AGENT_MAX_OUTPUT_TOKENS))
                     .doOnNext(event -> {
