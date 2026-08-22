@@ -8,7 +8,9 @@
                type="com.orbitworkbench.tool.domain.ToolCallRecord">
         <id property="id" column="id"/>
         <result property="agentRunId" column="agent_run_id"/>
+        <result property="workflowRunId" column="workflow_run_id"/>
         <result property="stepId" column="step_id"/>
+        <result property="workflowNodeRunId" column="workflow_node_run_id"/>
         <result property="modelCallId" column="model_call_id"/>
         <result property="toolDefinitionId" column="tool_definition_id"/>
         <result property="toolVersionId" column="tool_version_id"/>
@@ -32,7 +34,8 @@
     </resultMap>
 
     <sql id="CallColumns">
-        id, agent_run_id, step_id, model_call_id, tool_definition_id,
+        id, agent_run_id, workflow_run_id, step_id, workflow_node_run_id,
+        model_call_id, tool_definition_id,
         tool_version_id,
         tool_code, tool_version, call_key, arguments_hash, status,
         arguments_snapshot_ref, arguments_summary,
@@ -46,7 +49,8 @@
             useGeneratedKeys="true"
             keyProperty="id">
         INSERT INTO tool_call (
-            agent_run_id, step_id, model_call_id, tool_definition_id,
+            agent_run_id, workflow_run_id, step_id, workflow_node_run_id,
+            model_call_id, tool_definition_id,
             tool_version_id,
             tool_code, tool_version, call_key, arguments_hash, status,
             arguments_snapshot_ref, arguments_summary,
@@ -54,7 +58,8 @@
             retry_of_tool_call_id, started_at, finished_at,
             error_code, error_summary, created_at, updated_at
         ) VALUES (
-            #{agentRunId}, #{stepId}, #{modelCallId}, #{toolDefinitionId},
+            #{agentRunId}, #{workflowRunId}, #{stepId}, #{workflowNodeRunId},
+            #{modelCallId}, #{toolDefinitionId},
             #{toolVersionId},
             #{toolCode}, #{toolVersion}, #{callKey}, #{argumentsHash}, #{status},
             #{argumentsSnapshotRef}, #{argumentsSummary},
@@ -84,10 +89,24 @@
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
+    <select id="findByWorkflowRunId" resultMap="CallResultMap">
+        SELECT <include refid="CallColumns"/>
+        FROM tool_call
+        WHERE workflow_run_id = #{workflowRunId}
+        ORDER BY created_at, id
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
     <select id="countByRunId" resultType="long">
         SELECT COUNT(*)
         FROM tool_call
         WHERE agent_run_id = #{runId}
+    </select>
+
+    <select id="countByWorkflowRunId" resultType="long">
+        SELECT COUNT(*)
+        FROM tool_call
+        WHERE workflow_run_id = #{workflowRunId}
     </select>
 
     <update id="markRunning">

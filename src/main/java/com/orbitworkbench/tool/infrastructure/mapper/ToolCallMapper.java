@@ -17,7 +17,13 @@ public interface ToolCallMapper {
                                      @Param("offset") long offset,
                                      @Param("limit") int limit);
 
+    List<ToolCallRecord> findByWorkflowRunId(@Param("workflowRunId") Long workflowRunId,
+                                             @Param("offset") long offset,
+                                             @Param("limit") int limit);
+
     long countByRunId(@Param("runId") Long runId);
+
+    long countByWorkflowRunId(@Param("workflowRunId") Long workflowRunId);
 
     int markRunning(@Param("id") Long id,
                     @Param("startedAt") Instant startedAt);

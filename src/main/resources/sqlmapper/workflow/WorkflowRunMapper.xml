@@ -84,4 +84,44 @@
         WHERE id = #{id}
           AND status = #{fromStatus}
     </update>
+
+    <update id="markRunning">
+        UPDATE workflow_run
+        SET status = 'RUNNING',
+            started_at = #{startedAt},
+            updated_at = #{startedAt}
+        WHERE id = #{id}
+          AND status = 'QUEUED'
+    </update>
+
+    <update id="updateCurrentNode">
+        UPDATE workflow_run
+        SET current_node_key = #{currentNodeKey},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="markSucceeded">
+        UPDATE workflow_run
+        SET status = 'SUCCEEDED',
+            output_json = #{outputJson},
+            error_code = NULL,
+            error_summary = NULL,
+            finished_at = #{finishedAt},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="markFailed">
+        UPDATE workflow_run
+        SET status = 'FAILED',
+            error_code = #{errorCode},
+            error_summary = #{errorSummary},
+            finished_at = #{finishedAt},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND status IN ('QUEUED', 'RUNNING')
+    </update>
 </mapper>

@@ -66,6 +66,24 @@ public class ToolQueryService {
     }
 
     @Transactional(readOnly = true)
+    public PageResult<ToolCallResponse> workflowCalls(
+            Long workflowRunId, int page, int size) {
+        int normalizedPage = Math.max(page, 1);
+        int normalizedSize = Math.min(Math.max(size, 1), 100);
+        long offset = ((long) normalizedPage - 1) * normalizedSize;
+        List<ToolCallResponse> items = callMapper.findByWorkflowRunId(
+                        workflowRunId, offset, normalizedSize)
+                .stream()
+                .map(this::toCall)
+                .toList();
+        return new PageResult<>(
+                items,
+                normalizedPage,
+                normalizedSize,
+                callMapper.countByWorkflowRunId(workflowRunId));
+    }
+
+    @Transactional(readOnly = true)
     public ToolCallResponse call(Long id) {
         ToolCallRecord call = callMapper.findById(id);
         if (call == null) {
@@ -96,6 +114,8 @@ public class ToolQueryService {
         return new ToolCallResponse(
                 call.getId(),
                 call.getAgentRunId(),
+                call.getWorkflowRunId(),
+                call.getWorkflowNodeRunId(),
                 call.getStepId(),
                 call.getModelCallId(),
                 call.getToolCode(),

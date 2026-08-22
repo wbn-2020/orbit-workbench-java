@@ -28,4 +28,22 @@ public interface WorkflowRunMapper {
                      @Param("errorSummary") String errorSummary,
                      @Param("finishedAt") Instant finishedAt,
                      @Param("updatedAt") Instant updatedAt);
+
+    int markRunning(@Param("id") Long id,
+                    @Param("startedAt") Instant startedAt);
+
+    int updateCurrentNode(@Param("id") Long id,
+                          @Param("currentNodeKey") String currentNodeKey,
+                          @Param("updatedAt") Instant updatedAt);
+
+    int markSucceeded(@Param("id") Long id,
+                      @Param("outputJson") String outputJson,
+                      @Param("finishedAt") Instant finishedAt,
+                      @Param("updatedAt") Instant updatedAt);
+
+    int markFailed(@Param("id") Long id,
+                   @Param("errorCode") String errorCode,
+                   @Param("errorSummary") String errorSummary,
+                   @Param("finishedAt") Instant finishedAt,
+                   @Param("updatedAt") Instant updatedAt);
 }

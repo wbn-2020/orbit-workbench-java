@@ -28,6 +28,8 @@ public final class ToolDtos {
     public record ToolCallResponse(
             Long id,
             Long runId,
+            Long workflowRunId,
+            Long workflowNodeRunId,
             Long stepId,
             Long modelCallId,
             String toolCode,

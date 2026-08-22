@@ -49,6 +49,7 @@ public class ToolExecutionService {
     private final ThreadPoolTaskExecutor toolTaskExecutor;
     private final TransactionTemplate transactionTemplate;
     private final ToolRuntimeProperties properties;
+    private final WorkflowToolExecutionBridge workflowBridge;
 
     public ToolExecutionService(
             ToolRegistry registry,
@@ -61,7 +62,8 @@ public class ToolExecutionService {
             SseHub sseHub,
             @Qualifier("toolTaskExecutor") ThreadPoolTaskExecutor toolTaskExecutor,
             TransactionTemplate transactionTemplate,
-            ToolRuntimeProperties properties) {
+            ToolRuntimeProperties properties,
+            WorkflowToolExecutionBridge workflowBridge) {
         this.registry = registry;
         this.callMapper = callMapper;
         this.stepService = stepService;
@@ -73,6 +75,7 @@ public class ToolExecutionService {
         this.toolTaskExecutor = toolTaskExecutor;
         this.transactionTemplate = transactionTemplate;
         this.properties = properties;
+        this.workflowBridge = workflowBridge;
     }
 
     public ToolExecutionOutcome execute(ToolExecutionContext context,
@@ -103,7 +106,7 @@ public class ToolExecutionService {
         schemaValidator.validate(readSchema(version), arguments);
 
         String argumentsHash = sha256(argumentBytes);
-        String callKey = "tc_" + sha256((context.runId() + "|"
+        String callKey = "tc_" + sha256((context.auditScopeKey() + "|"
                 + requestedCall.id()).getBytes(StandardCharsets.UTF_8));
         ToolCallRecord existing = callMapper.findByCallKey(callKey);
         if (existing != null) {
@@ -119,7 +122,12 @@ public class ToolExecutionService {
         try {
             transactionTemplate.executeWithoutResult(status -> {
                 callMapper.insert(call);
-                stepService.attachToolCall(context.stepId(), call.getId());
+                if (context.workflowScope()) {
+                    workflowBridge.attachToolCall(
+                            context.workflowNodeRunId(), call.getId());
+                } else {
+                    stepService.attachToolCall(context.stepId(), call.getId());
+                }
                 publishAfterCommit(context, call, "tool.call.requested",
                         "工具调用已请求",
                         Map.of("toolCallId", call.getId(),
@@ -198,7 +206,12 @@ public class ToolExecutionService {
         } catch (ExecutionException exception) {
             Throwable cause = exception.getCause();
             if (cause instanceof ApiException apiException) {
-                fail(context, call, apiException.getErrorCode(), apiException.getMessage());
+                if (apiException.getErrorCode() == ErrorCode.CANCELLED) {
+                    cancel(context, call);
+                } else {
+                    fail(context, call, apiException.getErrorCode(),
+                            apiException.getMessage());
+                }
                 throw apiException;
             }
             fail(context, call, ErrorCode.TOOL_EXECUTION_FAILED, "工具执行失败");
@@ -207,7 +220,11 @@ public class ToolExecutionService {
                     ErrorCode.TOOL_EXECUTION_FAILED,
                     "工具执行失败");
         } catch (ApiException exception) {
-            fail(context, call, exception.getErrorCode(), exception.getMessage());
+            if (exception.getErrorCode() == ErrorCode.CANCELLED) {
+                cancel(context, call);
+            } else {
+                fail(context, call, exception.getErrorCode(), exception.getMessage());
+            }
             throw exception;
         } catch (RuntimeException exception) {
             future.cancel(true);
@@ -282,7 +299,9 @@ public class ToolExecutionService {
         Instant now = Instant.now();
         ToolCallRecord call = new ToolCallRecord();
         call.setAgentRunId(context.runId());
+        call.setWorkflowRunId(context.workflowRunId());
         call.setStepId(context.stepId());
+        call.setWorkflowNodeRunId(context.workflowNodeRunId());
         call.setModelCallId(context.modelCallId());
         call.setToolDefinitionId(version.getLegacyToolDefinitionId());
         call.setToolVersionId(version.getId());
@@ -378,12 +397,13 @@ public class ToolExecutionService {
                                     String type,
                                     String summary,
                                     Object payload) {
+        if (context.workflowScope()) {
+            workflowBridge.publish(
+                    context.workflowRunId(), type, summary, payload);
+            return;
+        }
         var event = eventService.append(
-                context.runId(),
-                call.getModelCallId(),
-                type,
-                summary,
-                payload);
+                context.runId(), call.getModelCallId(), type, summary, payload);
         sseHub.publishAfterCommit(event);
     }
 

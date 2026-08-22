@@ -46,4 +46,17 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    @Bean("workflowTaskExecutor")
+    public ThreadPoolTaskExecutor workflowTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(16);
+        executor.setThreadNamePrefix("workflow-run-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        executor.initialize();
+        return executor;
+    }
 }

@@ -6,7 +6,9 @@ public class ToolCallRecord {
 
     private Long id;
     private Long agentRunId;
+    private Long workflowRunId;
     private Long stepId;
+    private Long workflowNodeRunId;
     private Long modelCallId;
     private Long toolDefinitionId;
     private Long toolVersionId;
@@ -44,12 +46,28 @@ public class ToolCallRecord {
         this.agentRunId = agentRunId;
     }
 
+    public Long getWorkflowRunId() {
+        return workflowRunId;
+    }
+
+    public void setWorkflowRunId(Long workflowRunId) {
+        this.workflowRunId = workflowRunId;
+    }
+
     public Long getStepId() {
         return stepId;
     }
 
     public void setStepId(Long stepId) {
         this.stepId = stepId;
+    }
+
+    public Long getWorkflowNodeRunId() {
+        return workflowNodeRunId;
+    }
+
+    public void setWorkflowNodeRunId(Long workflowNodeRunId) {
+        this.workflowNodeRunId = workflowNodeRunId;
     }
 
     public Long getModelCallId() {

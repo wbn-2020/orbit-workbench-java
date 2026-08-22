@@ -19,9 +19,15 @@ import com.orbitworkbench.workflow.infrastructure.mapper.WorkflowRunMapper;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.RejectedExecutionException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class WorkflowRunService {
@@ -33,6 +39,9 @@ public class WorkflowRunService {
     private final WorkflowRunEventService eventService;
     private final WorkflowGraphValidator graphValidator;
     private final ObjectMapper objectMapper;
+    private final ThreadPoolTaskExecutor workflowTaskExecutor;
+    private final WorkflowRunWorker workflowRunWorker;
+    private final TransactionTemplate transactionTemplate;
 
     public WorkflowRunService(WorkflowService workflowService,
                               WorkflowRunMapper runMapper,
@@ -40,7 +49,11 @@ public class WorkflowRunService {
                               WorkflowNodeMapper nodeMapper,
                               WorkflowRunEventService eventService,
                               WorkflowGraphValidator graphValidator,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              @Qualifier("workflowTaskExecutor")
+                              ThreadPoolTaskExecutor workflowTaskExecutor,
+                              WorkflowRunWorker workflowRunWorker,
+                              TransactionTemplate transactionTemplate) {
         this.workflowService = workflowService;
         this.runMapper = runMapper;
         this.nodeRunMapper = nodeRunMapper;
@@ -48,6 +61,9 @@ public class WorkflowRunService {
         this.eventService = eventService;
         this.graphValidator = graphValidator;
         this.objectMapper = objectMapper;
+        this.workflowTaskExecutor = workflowTaskExecutor;
+        this.workflowRunWorker = workflowRunWorker;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @Transactional
@@ -101,6 +117,7 @@ public class WorkflowRunService {
                 "workflow 运行已创建，等待执行器接管",
                 Map.of("workflowVersionId", version.getId(),
                         "currentNodeKey", start.key()));
+        submitAfterCommit(run.getId());
         return get(run.getId());
     }
 
@@ -173,6 +190,48 @@ public class WorkflowRunService {
 
     private Long findWorkspaceId(Long workflowId) {
         return workflowService.get(workflowId).workspaceId();
+    }
+
+    private void submitAfterCommit(Long runId) {
+        Runnable submit = () -> {
+            try {
+                workflowTaskExecutor.execute(() -> workflowRunWorker.execute(runId));
+            } catch (RejectedExecutionException exception) {
+                markSubmissionFailure(runId);
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            submit.run();
+                        }
+                    });
+        } else {
+            submit.run();
+        }
+    }
+
+    private void markSubmissionFailure(Long runId) {
+        transactionTemplate.executeWithoutResult(status -> {
+            WorkflowRunRecord run = runMapper.findByIdForUpdate(runId);
+            if (run == null || !"QUEUED".equals(run.getStatus())) {
+                return;
+            }
+            Instant now = Instant.now();
+            if (runMapper.markFailed(
+                    runId,
+                    ErrorCode.UPSTREAM_UNAVAILABLE.name(),
+                    "Workflow 执行队列已满，未能提交后台执行",
+                    now,
+                    now) == 1) {
+                eventService.append(runId, "workflow.run.failed",
+                        "Workflow 执行队列已满，未能提交后台执行",
+                        Map.of("status", "FAILED",
+                                "errorCode", ErrorCode.UPSTREAM_UNAVAILABLE.name()));
+            }
+        });
     }
 
     private WorkflowRunRecord requireRun(Long id) {
