@@ -3,6 +3,7 @@ package com.orbitworkbench.tool.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.ai.application.AiToolDefinition;
+import com.orbitworkbench.mcp.application.McpToolRuntime;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.tool.domain.ToolVersionRecord;
@@ -20,13 +21,16 @@ public class ToolRegistry {
 
     private final ToolVersionMapper versionMapper;
     private final ObjectMapper objectMapper;
+    private final McpToolRuntime mcpToolRuntime;
     private final Map<String, ToolHandler> handlers;
 
     public ToolRegistry(ToolVersionMapper versionMapper,
                         ObjectMapper objectMapper,
+                        McpToolRuntime mcpToolRuntime,
                         List<ToolHandler> handlerList) {
         this.versionMapper = versionMapper;
         this.objectMapper = objectMapper;
+        this.mcpToolRuntime = mcpToolRuntime;
         Map<String, ToolHandler> registered = new LinkedHashMap<>();
         for (ToolHandler handler : handlerList) {
             ToolHandler previous = registered.put(handler.toolCode(), handler);
@@ -66,7 +70,8 @@ public class ToolRegistry {
     }
 
     public boolean hasHandler(String toolCode) {
-        return toolCode != null && handlers.containsKey(toolCode);
+        return toolCode != null
+                && (handlers.containsKey(toolCode) || mcpToolRuntime.hasHandler(toolCode));
     }
 
     private RegisteredTool requireRegistered(String toolCode, ToolVersionRecord version) {
@@ -77,6 +82,9 @@ public class ToolRegistry {
                     "工具不存在或未启用");
         }
         ToolHandler handler = handlers.get(toolCode);
+        if (handler == null && mcpToolRuntime.hasHandler(toolCode)) {
+            handler = mcpToolRuntime.handlerFor(version);
+        }
         if (handler == null) {
             throw new ApiException(
                     HttpStatus.CONFLICT,

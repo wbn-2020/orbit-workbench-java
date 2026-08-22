@@ -40,6 +40,33 @@
         WHERE id = #{id}
     </select>
 
+    <select id="findByToolCode" resultMap="CatalogResultMap">
+        SELECT <include refid="Columns"/>
+        FROM tool_catalog
+        WHERE tool_code = #{toolCode}
+    </select>
+
+    <insert id="insert"
+            parameterType="com.orbitworkbench.tool.domain.ToolCatalogRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO tool_catalog (
+            tool_code, name, description, handler_type,
+            published_version_id, status, lock_version, created_at, updated_at
+        ) VALUES (
+            #{toolCode}, #{name}, #{description}, #{handlerType},
+            #{publishedVersionId}, #{status}, #{lockVersion}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <update id="updateMetadata">
+        UPDATE tool_catalog
+        SET name = #{name},
+            description = #{description},
+            updated_at = #{now}
+        WHERE id = #{id}
+    </update>
+
     <select id="findByIdForUpdate" resultMap="CatalogResultMap">
         SELECT <include refid="Columns"/>
         FROM tool_catalog
@@ -74,5 +101,14 @@
         WHERE id = #{id}
           AND lock_version = #{expectedLockVersion}
           AND status != 'DISABLED'
+    </update>
+
+    <update id="setPublishedVersionPointer">
+        UPDATE tool_catalog
+        SET published_version_id = #{versionId},
+            lock_version = lock_version + 1,
+            updated_at = #{now}
+        WHERE id = #{id}
+          AND lock_version = #{expectedLockVersion}
     </update>
 </mapper>

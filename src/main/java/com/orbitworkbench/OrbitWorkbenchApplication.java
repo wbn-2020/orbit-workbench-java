@@ -3,6 +3,7 @@ package com.orbitworkbench;
 import com.orbitworkbench.shared.config.AgentRuntimeProperties;
 import com.orbitworkbench.shared.config.CryptoProperties;
 import com.orbitworkbench.shared.config.DatasetProperties;
+import com.orbitworkbench.shared.config.McpProperties;
 import com.orbitworkbench.shared.config.StorageProperties;
 import com.orbitworkbench.shared.config.ToolRuntimeProperties;
 import org.mybatis.spring.annotation.MapperScan;
@@ -21,6 +22,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
         "com.orbitworkbench.dataset.infrastructure.mapper",
         "com.orbitworkbench.analysis.infrastructure.mapper",
         "com.orbitworkbench.identity.infrastructure.mapper",
+        "com.orbitworkbench.mcp.infrastructure.mapper",
         "com.orbitworkbench.search.infrastructure.mapper",
         "com.orbitworkbench.statistics.infrastructure.mapper",
         "com.orbitworkbench.task.infrastructure.mapper",
@@ -32,6 +34,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
         AgentRuntimeProperties.class,
         CryptoProperties.class,
         DatasetProperties.class,
+        McpProperties.class,
         StorageProperties.class,
         ToolRuntimeProperties.class
 })

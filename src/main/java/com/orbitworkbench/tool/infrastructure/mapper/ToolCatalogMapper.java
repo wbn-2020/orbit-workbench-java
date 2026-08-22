@@ -11,7 +11,16 @@ public interface ToolCatalogMapper {
 
     ToolCatalogRecord findById(@Param("id") Long id);
 
+    ToolCatalogRecord findByToolCode(@Param("toolCode") String toolCode);
+
     ToolCatalogRecord findByIdForUpdate(@Param("id") Long id);
+
+    void insert(ToolCatalogRecord catalog);
+
+    int updateMetadata(@Param("id") Long id,
+                       @Param("name") String name,
+                       @Param("description") String description,
+                       @Param("now") Instant now);
 
     int updateStatus(@Param("id") Long id,
                      @Param("expectedStatus") String expectedStatus,
@@ -26,4 +35,9 @@ public interface ToolCatalogMapper {
                             @Param("versionId") Long versionId,
                             @Param("expectedLockVersion") Long expectedLockVersion,
                             @Param("now") Instant now);
+
+    int setPublishedVersionPointer(@Param("id") Long id,
+                                   @Param("versionId") Long versionId,
+                                   @Param("expectedLockVersion") Long expectedLockVersion,
+                                   @Param("now") Instant now);
 }
