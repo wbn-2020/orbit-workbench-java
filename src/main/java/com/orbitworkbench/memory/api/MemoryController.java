@@ -5,6 +5,7 @@ import com.orbitworkbench.memory.api.MemoryDtos.MemoryCandidateResponse;
 import com.orbitworkbench.memory.api.MemoryDtos.MemoryCommandRequest;
 import com.orbitworkbench.memory.api.MemoryDtos.MemoryRequest;
 import com.orbitworkbench.memory.api.MemoryDtos.MemoryResponse;
+import com.orbitworkbench.memory.api.MemoryDtos.RuntimeMemoryCandidateRequest;
 import com.orbitworkbench.memory.application.MemoryService;
 import com.orbitworkbench.shared.api.PageResult;
 import jakarta.validation.Valid;
@@ -83,6 +84,20 @@ public class MemoryController {
     public MemoryCandidateResponse propose(
             @Valid @RequestBody MemoryCandidateRequest request) {
         return service.propose(request);
+    }
+
+    @PostMapping("/candidates/from-agent-runs/{agentRunId}")
+    public MemoryCandidateResponse proposeFromAgentRun(
+            @PathVariable Long agentRunId,
+            @Valid @RequestBody RuntimeMemoryCandidateRequest request) {
+        return service.proposeFromAgentRun(agentRunId, request);
+    }
+
+    @PostMapping("/candidates/from-workflow-runs/{workflowRunId}")
+    public MemoryCandidateResponse proposeFromWorkflowRun(
+            @PathVariable Long workflowRunId,
+            @Valid @RequestBody RuntimeMemoryCandidateRequest request) {
+        return service.proposeFromWorkflowRun(workflowRunId, request);
     }
 
     @PostMapping("/candidates/{id}/confirm")

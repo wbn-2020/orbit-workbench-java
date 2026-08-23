@@ -17,6 +17,7 @@ import com.orbitworkbench.artifact.application.CreateInitialArtifactCommand;
 import com.orbitworkbench.document.api.DocumentDtos.DocumentText;
 import com.orbitworkbench.document.application.DocumentService;
 import com.orbitworkbench.memory.application.MemoryService;
+import com.orbitworkbench.memory.application.MemoryProposalSummary;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.config.AgentRuntimeProperties;
@@ -155,6 +156,7 @@ public class AgentRunWorker {
         AtomicReference<AiUsage> usage = new AtomicReference<>();
         AtomicReference<ModelCallRecord> activeDataCall = new AtomicReference<>();
         DataAnalysisRunResult dataAnalysisResult = null;
+        MemoryProposalSummary memoryProposal = MemoryProposalSummary.none();
         TextDeltaBuffer deltaBuffer = TextDeltaBuffer.createDefault();
         StreamBudget streamBudget = new StreamBudget(runtimeProperties);
         Disposable heartbeat = null;
@@ -166,6 +168,7 @@ public class AgentRunWorker {
             if (memoryService != null) {
                 systemPrompt = memoryService.appendConfirmedInjection(
                         systemPrompt, task.getWorkspaceId());
+                systemPrompt = memoryService.appendCandidateProposalProtocol(systemPrompt);
             }
             Long connectionId = run.getConnectionId() == null
                     ? task.getConnectionId() : run.getConnectionId();
@@ -184,7 +187,28 @@ public class AgentRunWorker {
                         () -> checkControlState(runId),
                         activeDataCall::set);
                 modelCall = dataAnalysisResult.finalModelCall();
-                completeDataAnalysisSuccess(run, task, dataAnalysisResult);
+                DataAnalysisRunResult completedDataAnalysis = dataAnalysisResult;
+                String originalReport = completedDataAnalysis.report();
+                if (memoryService != null) {
+                    completedDataAnalysis = new DataAnalysisRunResult(
+                            completedDataAnalysis.context(),
+                            completedDataAnalysis.finalModelCall(),
+                            memoryService.stripCandidateBlocks(
+                                    completedDataAnalysis.report()),
+                            completedDataAnalysis.chartSpecs(),
+                            completedDataAnalysis.providerRequestId(),
+                            completedDataAnalysis.usage(),
+                            completedDataAnalysis.artifactStepId());
+                }
+                completeDataAnalysisSuccess(
+                        run, task, completedDataAnalysis);
+                memoryProposal = proposeMemoryCandidates(
+                        () -> memoryService.proposeFromAgentOutput(
+                                run.getId(), originalReport));
+                publishMemoryProposalEvent(
+                        run.getId(),
+                        completedDataAnalysis.finalModelCall().getId(),
+                        memoryProposal);
                 return;
             }
             modelCall = createModelCall(run, connection);
@@ -249,8 +273,20 @@ public class AgentRunWorker {
                         ErrorCode.INVALID_STRUCTURED_OUTPUT,
                         "模型未返回非空文本内容");
             }
-            completeSuccess(run, task, modelCall, output.toString(),
+            String completedOutput = memoryService == null
+                    ? output.toString()
+                    : memoryService.stripCandidateBlocks(output.toString());
+            if (completedOutput.isBlank()) {
+                throw new RunExecutionException(
+                        ErrorCode.INVALID_STRUCTURED_OUTPUT,
+                        "模型未返回非空文本内容");
+            }
+            completeSuccess(run, task, modelCall, completedOutput,
                     providerRequestId.get(), usage.get());
+            memoryProposal = proposeMemoryCandidates(
+                    () -> memoryService.proposeFromAgentOutput(
+                            run.getId(), output.toString()));
+            publishMemoryProposalEvent(run.getId(), modelCall.getId(), memoryProposal);
         } catch (AgentRunControlException exception) {
             if (modelCall == null) {
                 modelCall = activeDataCall.get();
@@ -490,6 +526,38 @@ public class AgentRunWorker {
                         "status", "SUCCEEDED",
                         "outputLength", result.report().length(),
                         "chartCount", result.chartSpecs().size()));
+        sseHub.publish(event);
+    }
+
+    private MemoryProposalSummary proposeMemoryCandidates(
+            java.util.function.Supplier<MemoryProposalSummary> proposal) {
+        if (memoryService == null) {
+            return MemoryProposalSummary.none();
+        }
+        try {
+            return proposal.get();
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Memory candidate proposal failed without failing AgentRun");
+            return MemoryProposalSummary.failed();
+        }
+    }
+
+    private void publishMemoryProposalEvent(
+            Long runId,
+            Long modelCallId,
+            MemoryProposalSummary summary) {
+        if (!summary.blockFound() && summary.proposedCount() == 0
+                && summary.rejectedCount() == 0) {
+            return;
+        }
+        RunEventRecord event = runEventService.append(
+                runId,
+                modelCallId,
+                "memory.candidates.proposed",
+                "运行输出中的记忆候选已处理",
+                Map.of(
+                        "proposedCount", summary.proposedCount(),
+                        "rejectedCount", summary.rejectedCount()));
         sseHub.publish(event);
     }
 

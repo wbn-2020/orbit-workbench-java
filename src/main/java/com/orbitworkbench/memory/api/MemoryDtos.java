@@ -38,6 +38,14 @@ public final class MemoryDtos {
     ) {
     }
 
+    public record RuntimeMemoryCandidateRequest(
+            @NotBlank @Size(max = 32) String memoryType,
+            @NotEmpty Map<String, Object> content,
+            @DecimalMin("0.0") @DecimalMax("1.0") BigDecimal confidence,
+            Instant expiresAt
+    ) {
+    }
+
     public record MemoryResponse(
             Long id,
             Long workspaceId,

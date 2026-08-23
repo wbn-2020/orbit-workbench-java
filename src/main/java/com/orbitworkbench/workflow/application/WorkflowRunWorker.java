@@ -14,6 +14,8 @@ import com.orbitworkbench.mcp.domain.McpServerRecord;
 import com.orbitworkbench.mcp.domain.McpToolRecord;
 import com.orbitworkbench.mcp.infrastructure.mapper.McpServerMapper;
 import com.orbitworkbench.mcp.infrastructure.mapper.McpToolMapper;
+import com.orbitworkbench.memory.application.MemoryProposalSummary;
+import com.orbitworkbench.memory.application.MemoryService;
 import com.orbitworkbench.workflow.domain.WorkflowNodeRunRecord;
 import com.orbitworkbench.workflow.domain.WorkflowRunRecord;
 import com.orbitworkbench.workflow.domain.WorkflowVersionRecord;
@@ -47,6 +49,7 @@ public class WorkflowRunWorker {
     private final ToolExecutionService toolExecutionService;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
+    private final MemoryService memoryService;
 
     public WorkflowRunWorker(WorkflowRunMapper runMapper,
                              WorkflowNodeRunMapper nodeRunMapper,
@@ -59,7 +62,8 @@ public class WorkflowRunWorker {
                              WorkflowRunEventService eventService,
                              ToolExecutionService toolExecutionService,
                              ObjectMapper objectMapper,
-                             TransactionTemplate transactionTemplate) {
+                             TransactionTemplate transactionTemplate,
+                             MemoryService memoryService) {
         this.runMapper = runMapper;
         this.nodeRunMapper = nodeRunMapper;
         this.versionMapper = versionMapper;
@@ -72,6 +76,7 @@ public class WorkflowRunWorker {
         this.toolExecutionService = toolExecutionService;
         this.objectMapper = objectMapper;
         this.transactionTemplate = transactionTemplate;
+        this.memoryService = memoryService;
     }
 
     public void execute(Long workflowRunId) {
@@ -128,9 +133,15 @@ public class WorkflowRunWorker {
             WorkflowGraphValidator.Node end = ordered.get(2);
             activeNodeRun = requireNodeRun(nodeRuns, end.key());
             runEndNode(workflowRunId, activeNodeRun);
-            succeed(workflowRunId, writeJson(Map.of(
+            String outputJson = writeJson(Map.of(
                     "toolCallId", outcome.toolCall().getId(),
-                    "result", outcome.result())));
+                    "result", outcome.result()));
+            succeed(workflowRunId, outputJson);
+            MemoryProposalSummary memoryProposal = proposeMemoryCandidates(
+                    () -> memoryService.proposeFromWorkflowOutput(
+                            workflowRunId,
+                            outputJson));
+            publishMemoryProposalEvent(workflowRunId, memoryProposal);
         } catch (ApiException exception) {
             if (exception.getErrorCode() == ErrorCode.CANCELLED) {
                 cancel(workflowRunId, activeNodeRun);
@@ -215,6 +226,31 @@ public class WorkflowRunWorker {
         }
         eventService.append(runId, "workflow.run.completed",
                 "workflow 运行已完成", Map.of("status", "SUCCEEDED"));
+    }
+
+    private MemoryProposalSummary proposeMemoryCandidates(
+            java.util.function.Supplier<MemoryProposalSummary> proposal) {
+        try {
+            return proposal.get();
+        } catch (RuntimeException exception) {
+            return MemoryProposalSummary.failed();
+        }
+    }
+
+    private void publishMemoryProposalEvent(
+            Long runId,
+            MemoryProposalSummary summary) {
+        if (!summary.blockFound() && summary.proposedCount() == 0
+                && summary.rejectedCount() == 0) {
+            return;
+        }
+        eventService.append(
+                runId,
+                "memory.candidates.proposed",
+                "运行输出中的记忆候选已处理",
+                Map.of(
+                        "proposedCount", summary.proposedCount(),
+                        "rejectedCount", summary.rejectedCount()));
     }
 
     private void fail(Long runId,

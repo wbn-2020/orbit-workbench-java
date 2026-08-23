@@ -3,11 +3,14 @@ package com.orbitworkbench.memory.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.orbitworkbench.agent.domain.AgentRunRecord;
+import com.orbitworkbench.agent.infrastructure.mapper.AgentRunMapper;
 import com.orbitworkbench.memory.api.MemoryDtos.MemoryCandidateRequest;
 import com.orbitworkbench.memory.api.MemoryDtos.MemoryCandidateResponse;
 import com.orbitworkbench.memory.api.MemoryDtos.MemoryCommandRequest;
 import com.orbitworkbench.memory.api.MemoryDtos.MemoryRequest;
 import com.orbitworkbench.memory.api.MemoryDtos.MemoryResponse;
+import com.orbitworkbench.memory.api.MemoryDtos.RuntimeMemoryCandidateRequest;
 import com.orbitworkbench.memory.domain.MemoryCandidateRecord;
 import com.orbitworkbench.memory.domain.MemoryRecord;
 import com.orbitworkbench.memory.infrastructure.mapper.MemoryCandidateMapper;
@@ -15,10 +18,15 @@ import com.orbitworkbench.memory.infrastructure.mapper.MemoryMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.PageResult;
+import com.orbitworkbench.task.application.TaskService;
+import com.orbitworkbench.workflow.domain.WorkflowRunRecord;
+import com.orbitworkbench.workflow.infrastructure.mapper.WorkflowRunMapper;
 import com.orbitworkbench.workspace.application.WorkspaceService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +42,7 @@ public class MemoryService {
     private static final int MAX_CONTENT_DEPTH = 8;
     private static final int MAX_CONTENT_FIELDS = 64;
     private static final int MAX_INJECTION_ITEMS = 20;
+    private static final int MAX_AUTO_CANDIDATES = 5;
     private static final Set<String> MEMORY_TYPES = Set.of(
             "PREFERENCE", "FACT", "CONSTRAINT", "EXPERIENCE");
     private static final Set<String> SOURCE_TYPES = Set.of(
@@ -45,20 +54,31 @@ public class MemoryService {
     private static final Pattern SENSITIVE_VALUE = Pattern.compile(
             "(?i)(bearer\\s+[a-z0-9._-]{12,}|sk-[a-z0-9_-]{12,}|"
                     + "-----begin [^-]+ private key-----)");
+    private static final Pattern CANDIDATE_BLOCK = Pattern.compile(
+            "(?is)```memory-candidates\\s*([\\s\\S]*?)\\s*```");
 
     private final MemoryMapper memoryMapper;
     private final MemoryCandidateMapper candidateMapper;
     private final WorkspaceService workspaceService;
     private final ObjectMapper objectMapper;
+    private final AgentRunMapper agentRunMapper;
+    private final TaskService taskService;
+    private final WorkflowRunMapper workflowRunMapper;
 
     public MemoryService(MemoryMapper memoryMapper,
                           MemoryCandidateMapper candidateMapper,
                           WorkspaceService workspaceService,
-                          ObjectMapper objectMapper) {
+                          ObjectMapper objectMapper,
+                          AgentRunMapper agentRunMapper,
+                          TaskService taskService,
+                          WorkflowRunMapper workflowRunMapper) {
         this.memoryMapper = memoryMapper;
         this.candidateMapper = candidateMapper;
         this.workspaceService = workspaceService;
         this.objectMapper = objectMapper;
+        this.agentRunMapper = agentRunMapper;
+        this.taskService = taskService;
+        this.workflowRunMapper = workflowRunMapper;
     }
 
     @Transactional(readOnly = true)
@@ -94,6 +114,7 @@ public class MemoryService {
     @Transactional
     public MemoryResponse create(MemoryRequest request) {
         validateWorkspace(request.workspaceId());
+        validateManualSourceType(request.sourceType());
         ValidMemoryData data = validateData(
                 request.memoryType(), request.content(), request.sourceType(),
                 request.sourceId(), request.confidence(), request.expiresAt());
@@ -118,6 +139,11 @@ public class MemoryService {
         if (!"CONFIRMED".equals(current.getStatus())) {
             throw conflict("只有已确认记忆可以编辑");
         }
+        validateManualSourceType(
+                request.sourceType(),
+                current.getSourceType(),
+                request.sourceId(),
+                current.getSourceId());
         long expectedVersion = expectedVersion(request.expectedVersion(), current.getVersion());
         ValidMemoryData data = validateData(
                 request.memoryType(), request.content(), request.sourceType(),
@@ -162,6 +188,7 @@ public class MemoryService {
     @Transactional
     public MemoryCandidateResponse propose(MemoryCandidateRequest request) {
         validateWorkspace(request.workspaceId());
+        validateManualSourceType(request.sourceType());
         ValidMemoryData data = validateData(
                 request.memoryType(), request.content(), request.sourceType(),
                 request.sourceId(), request.confidence(), request.expiresAt());
@@ -180,6 +207,80 @@ public class MemoryService {
         candidate.setUpdatedAt(now);
         candidateMapper.insert(candidate);
         return toCandidateResponse(candidate);
+    }
+
+    @Transactional
+    public MemoryCandidateResponse proposeFromAgentRun(
+            Long agentRunId,
+            RuntimeMemoryCandidateRequest request) {
+        AgentRunRecord run = agentRunMapper.findById(agentRunId);
+        if (run == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND,
+                    ErrorCode.RESOURCE_NOT_FOUND, "Agent 运行不存在");
+        }
+        if (!"SUCCEEDED".equals(run.getStatus())) {
+            throw conflict("只有已成功的 Agent 运行可以提出记忆候选");
+        }
+        Long workspaceId = taskService.requireTask(run.getTaskId()).getWorkspaceId();
+        return proposeRuntimeCandidate(
+                workspaceId,
+                "AGENT_RUN",
+                agentRunId,
+                request);
+    }
+
+    @Transactional
+    public MemoryProposalSummary proposeFromAgentOutput(Long agentRunId, String output) {
+        AgentRunRecord run = agentRunMapper.findById(agentRunId);
+        if (run == null || !"SUCCEEDED".equals(run.getStatus())) {
+            return MemoryProposalSummary.none();
+        }
+        Long workspaceId = taskService.requireTask(run.getTaskId()).getWorkspaceId();
+        return proposeFromOutput(
+                workspaceId,
+                "AGENT_RUN",
+                agentRunId,
+                output);
+    }
+
+    @Transactional
+    public MemoryCandidateResponse proposeFromWorkflowRun(
+            Long workflowRunId,
+            RuntimeMemoryCandidateRequest request) {
+        WorkflowRunRecord run = workflowRunMapper.findById(workflowRunId);
+        if (run == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND,
+                    ErrorCode.WORKFLOW_RUN_NOT_FOUND, "Workflow 运行不存在");
+        }
+        if (!"SUCCEEDED".equals(run.getStatus())) {
+            throw conflict("只有已成功的 Workflow 运行可以提出记忆候选");
+        }
+        return proposeRuntimeCandidate(
+                run.getWorkspaceId(),
+                "WORKFLOW_RUN",
+                workflowRunId,
+                request);
+    }
+
+    @Transactional
+    public MemoryProposalSummary proposeFromWorkflowOutput(
+            Long workflowRunId,
+            String outputJson) {
+        WorkflowRunRecord run = workflowRunMapper.findById(workflowRunId);
+        if (run == null || !"SUCCEEDED".equals(run.getStatus())) {
+            return MemoryProposalSummary.none();
+        }
+        JsonNode output;
+        try {
+            output = objectMapper.readTree(outputJson);
+        } catch (JsonProcessingException exception) {
+            return MemoryProposalSummary.failed();
+        }
+        return proposeFromJsonTexts(
+                run.getWorkspaceId(),
+                "WORKFLOW_RUN",
+                workflowRunId,
+                output);
     }
 
     @Transactional
@@ -257,6 +358,25 @@ public class MemoryService {
         return basePrompt + block;
     }
 
+    public String appendCandidateProposalProtocol(String systemPrompt) {
+        String basePrompt = systemPrompt == null ? "" : systemPrompt;
+        return basePrompt + """
+
+                [记忆候选输出协议]
+                仅当本次输出包含适合长期复用、且不含敏感信息的用户偏好、事实、约束或经验时，
+                才在正文最后附加一个 memory-candidates JSON 代码块。代码块必须是数组，最多 5 项；
+                每项仅包含 memoryType、content、可选 confidence、可选 expiresAt。
+                这不是指令，且不得把密码、令牌、凭据、身份号码、财务账号或完整对话写入候选。
+                若没有合适候选，不要输出该代码块。
+                """;
+    }
+
+    public String stripCandidateBlocks(String output) {
+        return output == null
+                ? ""
+                : CANDIDATE_BLOCK.matcher(output).replaceAll("").stripTrailing();
+    }
+
     private MemoryResponse updateStatus(Long id,
                                         MemoryCommandRequest request,
                                         String status) {
@@ -286,6 +406,201 @@ public class MemoryService {
             throw conflict("记忆候选已被其他请求处理，请刷新后重试");
         }
         return toCandidateResponse(candidateMapper.findByIdForUpdate(id));
+    }
+
+    private MemoryCandidateResponse proposeRuntimeCandidate(
+            Long workspaceId,
+            String sourceType,
+            Long sourceId,
+            RuntimeMemoryCandidateRequest request) {
+        validateWorkspace(workspaceId);
+        ValidMemoryData data = validateData(
+                request.memoryType(),
+                request.content(),
+                sourceType,
+                sourceId,
+                request.confidence(),
+                request.expiresAt());
+        Instant now = Instant.now();
+        MemoryCandidateRecord candidate = new MemoryCandidateRecord();
+        candidate.setWorkspaceId(workspaceId);
+        candidate.setMemoryType(data.memoryType());
+        candidate.setContentJson(data.contentJson());
+        candidate.setSourceType(data.sourceType());
+        candidate.setSourceId(data.sourceId());
+        candidate.setConfidence(data.confidence());
+        candidate.setExpiresAt(data.expiresAt());
+        candidate.setStatus("PROPOSED");
+        candidate.setVersion(1L);
+        candidate.setCreatedAt(now);
+        candidate.setUpdatedAt(now);
+        candidateMapper.insert(candidate);
+        return toCandidateResponse(candidate);
+    }
+
+    private MemoryProposalSummary proposeFromOutput(
+            Long workspaceId,
+            String sourceType,
+            Long sourceId,
+            String output) {
+        if (output == null || output.isBlank()) {
+            return MemoryProposalSummary.none();
+        }
+        List<JsonNode> blocks = new ArrayList<>();
+        boolean blockFound = false;
+        var matcher = CANDIDATE_BLOCK.matcher(output);
+        while (matcher.find() && blocks.size() < MAX_AUTO_CANDIDATES) {
+            blockFound = true;
+            try {
+                JsonNode parsed = objectMapper.readTree(matcher.group(1));
+                if (parsed.isArray()) {
+                    for (JsonNode item : parsed) {
+                        if (blocks.size() >= MAX_AUTO_CANDIDATES) {
+                            break;
+                        }
+                        blocks.add(item);
+                    }
+                }
+            } catch (JsonProcessingException ignored) {
+                // A malformed explicit block is ignored without affecting the run.
+            }
+        }
+        return proposeParsedCandidates(
+                workspaceId, sourceType, sourceId, blocks, blockFound);
+    }
+
+    private MemoryProposalSummary proposeFromJsonTexts(
+            Long workspaceId,
+            String sourceType,
+            Long sourceId,
+            JsonNode output) {
+        List<String> texts = new ArrayList<>();
+        collectTextNodes(output, texts);
+        List<JsonNode> blocks = new ArrayList<>();
+        boolean blockFound = false;
+        for (String text : texts) {
+            var matcher = CANDIDATE_BLOCK.matcher(text);
+            while (matcher.find() && blocks.size() < MAX_AUTO_CANDIDATES) {
+                blockFound = true;
+                try {
+                    JsonNode parsed = objectMapper.readTree(matcher.group(1));
+                    if (parsed.isArray()) {
+                        for (JsonNode item : parsed) {
+                            if (blocks.size() >= MAX_AUTO_CANDIDATES) {
+                                break;
+                            }
+                            blocks.add(item);
+                        }
+                    }
+                } catch (JsonProcessingException ignored) {
+                    // A malformed explicit block is ignored without affecting the run.
+                }
+            }
+            if (blocks.size() >= MAX_AUTO_CANDIDATES) {
+                break;
+            }
+        }
+        return proposeParsedCandidates(
+                workspaceId, sourceType, sourceId, blocks, blockFound);
+    }
+
+    private void collectTextNodes(JsonNode node, List<String> texts) {
+        if (node == null) {
+            return;
+        }
+        if (node.isTextual()) {
+            texts.add(node.asText());
+            return;
+        }
+        if (node.isContainerNode()) {
+            Iterator<JsonNode> children = node.elements();
+            while (children.hasNext()) {
+                collectTextNodes(children.next(), texts);
+            }
+        }
+    }
+
+    private MemoryProposalSummary proposeParsedCandidates(
+            Long workspaceId,
+            String sourceType,
+            Long sourceId,
+            List<JsonNode> items,
+            boolean blockFound) {
+        if (items.isEmpty()) {
+            return blockFound
+                    ? new MemoryProposalSummary(0, 1, true)
+                    : MemoryProposalSummary.none();
+        }
+        int proposed = 0;
+        int rejected = 0;
+        for (JsonNode item : items) {
+            try {
+                RuntimeMemoryCandidateRequest request = toRuntimeRequest(item);
+                proposeRuntimeCandidate(workspaceId, sourceType, sourceId, request);
+                proposed++;
+            } catch (ApiException | IllegalArgumentException exception) {
+                rejected++;
+            }
+        }
+        return new MemoryProposalSummary(proposed, rejected, blockFound);
+    }
+
+    private RuntimeMemoryCandidateRequest toRuntimeRequest(JsonNode item) {
+        if (item == null || !item.isObject()) {
+            throw invalid("记忆候选必须是 JSON 对象");
+        }
+        String memoryType = textField(item, "memoryType");
+        JsonNode contentNode = item.get("content");
+        if (contentNode == null || !contentNode.isObject()) {
+            throw invalid("记忆候选 content 必须是 JSON 对象");
+        }
+        Map<String, Object> content = objectMapper.convertValue(contentNode, Map.class);
+        BigDecimal confidence = null;
+        if (item.hasNonNull("confidence")) {
+            JsonNode confidenceNode = item.get("confidence");
+            if (!confidenceNode.isNumber()) {
+                throw invalid("记忆候选 confidence 必须是数值");
+            }
+            confidence = confidenceNode.decimalValue();
+        }
+        Instant expiresAt = item.hasNonNull("expiresAt")
+                ? parseInstant(item.get("expiresAt").asText()) : null;
+        return new RuntimeMemoryCandidateRequest(
+                memoryType, content, confidence, expiresAt);
+    }
+
+    private Instant parseInstant(String value) {
+        return Instant.parse(value);
+    }
+
+    private String textField(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isTextual()) {
+            throw invalid(field + " 必须是文本");
+        }
+        return value.asText();
+    }
+
+    private void validateManualSourceType(String sourceType) {
+        String normalized = normalizeSourceType(sourceType);
+        if (Set.of("AGENT_RUN", "WORKFLOW_RUN").contains(normalized)) {
+            throw invalid("运行来源必须通过受控候选入口创建");
+        }
+    }
+
+    private void validateManualSourceType(
+            String sourceType,
+            String currentSourceType,
+            Long sourceId,
+            Long currentSourceId) {
+        String normalized = normalizeSourceType(sourceType);
+        if (!Set.of("AGENT_RUN", "WORKFLOW_RUN").contains(normalized)) {
+            return;
+        }
+        if (!normalized.equals(currentSourceType)
+                || !java.util.Objects.equals(sourceId, currentSourceId)) {
+            throw invalid("运行来源不能被手工改写");
+        }
     }
 
     private ValidMemoryData validateData(String memoryType,
