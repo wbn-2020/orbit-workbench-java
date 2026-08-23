@@ -11,6 +11,7 @@ import com.orbitworkbench.agent.infrastructure.mapper.AgentRunMapper;
 import com.orbitworkbench.agent.infrastructure.mapper.ModelCallMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
+import com.orbitworkbench.content.application.ContentVersionLifecycleService;
 import com.orbitworkbench.task.application.TaskService;
 import com.orbitworkbench.task.domain.TaskRecord;
 import java.time.Instant;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,7 @@ public class AgentRunService {
     private final ThreadPoolTaskExecutor agentTaskExecutor;
     private final AgentRunWorker agentRunWorker;
     private final TransactionTemplate transactionTemplate;
+    private final ContentVersionLifecycleService contentVersionLifecycleService;
 
     public AgentRunService(AgentRunMapper agentRunMapper,
                            ModelCallMapper modelCallMapper,
@@ -52,6 +55,30 @@ public class AgentRunService {
                            ThreadPoolTaskExecutor agentTaskExecutor,
                            AgentRunWorker agentRunWorker,
                            TransactionTemplate transactionTemplate) {
+        this(
+                agentRunMapper,
+                modelCallMapper,
+                agentDefinitionService,
+                taskService,
+                runEventService,
+                sseHub,
+                agentTaskExecutor,
+                agentRunWorker,
+                transactionTemplate,
+                null);
+    }
+
+    @Autowired
+    public AgentRunService(AgentRunMapper agentRunMapper,
+                           ModelCallMapper modelCallMapper,
+                           AgentDefinitionService agentDefinitionService,
+                           TaskService taskService,
+                           RunEventService runEventService,
+                           SseHub sseHub,
+                           ThreadPoolTaskExecutor agentTaskExecutor,
+                           AgentRunWorker agentRunWorker,
+                           TransactionTemplate transactionTemplate,
+                           ContentVersionLifecycleService contentVersionLifecycleService) {
         this.agentRunMapper = agentRunMapper;
         this.modelCallMapper = modelCallMapper;
         this.agentDefinitionService = agentDefinitionService;
@@ -61,6 +88,7 @@ public class AgentRunService {
         this.agentTaskExecutor = agentTaskExecutor;
         this.agentRunWorker = agentRunWorker;
         this.transactionTemplate = transactionTemplate;
+        this.contentVersionLifecycleService = contentVersionLifecycleService;
     }
 
     @Transactional
@@ -161,6 +189,9 @@ public class AgentRunService {
         }
         if (immediate) {
             taskService.updateRunStatus(run.getTaskId(), id, "CANCELLED");
+            if (contentVersionLifecycleService != null && isContentCreationRun(run)) {
+                contentVersionLifecycleService.cancel(run.getTaskId());
+            }
         }
         String targetStatus = immediate ? "CANCELLED" : "CANCELLING";
         String eventType = immediate ? "run.cancelled" : "run.cancel.requested";
@@ -169,6 +200,11 @@ public class AgentRunService {
                 java.util.Map.of("status", targetStatus));
         sseHub.publishAfterCommit(event);
         return get(id);
+    }
+
+    private boolean isContentCreationRun(AgentRunRecord run) {
+        TaskRecord task = taskService.requireTask(run.getTaskId());
+        return task != null && "CONTENT_CREATION".equals(task.getModuleType());
     }
 
     @Transactional

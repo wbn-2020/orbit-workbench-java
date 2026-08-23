@@ -37,6 +37,15 @@
         ORDER BY version_number DESC, id DESC
     </select>
 
+    <select id="findLatestByArtifactId" resultMap="ArtifactVersionResultMap">
+        SELECT id, artifact_id, version_number, content_ref, content_format,
+               source_run_id, change_summary, created_at
+        FROM artifact_version
+        WHERE artifact_id = #{artifactId}
+        ORDER BY version_number DESC, id DESC
+        LIMIT 1
+    </select>
+
     <select id="findByArtifactIdAndId" resultMap="ArtifactVersionResultMap">
         SELECT id, artifact_id, version_number, content_ref, content_format,
                source_run_id, change_summary, created_at

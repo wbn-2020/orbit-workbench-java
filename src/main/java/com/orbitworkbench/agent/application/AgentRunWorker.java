@@ -14,10 +14,12 @@ import com.orbitworkbench.aiconnection.application.AiConnectionService;
 import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
 import com.orbitworkbench.artifact.application.ArtifactService;
 import com.orbitworkbench.artifact.application.CreateInitialArtifactCommand;
+import com.orbitworkbench.artifact.api.ArtifactDtos.ArtifactDetailResponse;
 import com.orbitworkbench.document.api.DocumentDtos.DocumentText;
 import com.orbitworkbench.document.application.DocumentService;
 import com.orbitworkbench.memory.application.MemoryService;
 import com.orbitworkbench.memory.application.MemoryProposalSummary;
+import com.orbitworkbench.content.application.ContentVersionLifecycleService;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.config.AgentRuntimeProperties;
@@ -63,6 +65,7 @@ public class AgentRunWorker {
     private final AgentRuntimeProperties runtimeProperties;
     private final DataAnalysisAgentRunner dataAnalysisAgentRunner;
     private final MemoryService memoryService;
+    private final ContentVersionLifecycleService contentVersionLifecycleService;
 
     @Autowired
     public AgentRunWorker(AgentRunMapper agentRunMapper,
@@ -78,7 +81,8 @@ public class AgentRunWorker {
                           TransactionTemplate transactionTemplate,
                           AgentRuntimeProperties runtimeProperties,
                           DataAnalysisAgentRunner dataAnalysisAgentRunner,
-                          MemoryService memoryService) {
+                          MemoryService memoryService,
+                          ContentVersionLifecycleService contentVersionLifecycleService) {
         this.agentRunMapper = agentRunMapper;
         this.modelCallMapper = modelCallMapper;
         this.agentDefinitionService = agentDefinitionService;
@@ -93,6 +97,7 @@ public class AgentRunWorker {
         this.runtimeProperties = runtimeProperties;
         this.dataAnalysisAgentRunner = dataAnalysisAgentRunner;
         this.memoryService = memoryService;
+        this.contentVersionLifecycleService = contentVersionLifecycleService;
     }
 
     public AgentRunWorker(AgentRunMapper agentRunMapper,
@@ -120,6 +125,7 @@ public class AgentRunWorker {
                 sseHub,
                 transactionTemplate,
                 runtimeProperties,
+                null,
                 null,
                 null);
     }
@@ -164,6 +170,10 @@ public class AgentRunWorker {
             agentRunMapper.touchHeartbeat(runId, Instant.now());
             heartbeat = startHeartbeat(runId);
             task = taskService.requireTask(run.getTaskId());
+            if (contentVersionLifecycleService != null
+                    && "CONTENT_CREATION".equals(task.getModuleType())) {
+                contentVersionLifecycleService.markRunning(task.getId(), run.getId());
+            }
             String systemPrompt = requireRunPrompt(run);
             if (memoryService != null) {
                 systemPrompt = memoryService.appendConfirmedInjection(
@@ -352,7 +362,13 @@ public class AgentRunWorker {
                         .append(document.content()).append('\n');
             }
         }
-        prompt.append("\n请直接输出 Markdown 学习笔记和练习题，不要输出调用过程。");
+        if ("CONTENT_CREATION".equals(task.getModuleType())) {
+            prompt.append("\n请根据内容项目要求直接输出最终 Markdown 内容。"
+                    + "不要输出模型思考、调用过程、JSON 包装或额外说明。"
+                    + "如果操作是审阅，请输出结构化、可执行的审阅意见，而不是重新描述任务。");
+        } else {
+            prompt.append("\n请直接输出 Markdown 学习笔记和练习题，不要输出调用过程。");
+        }
         return prompt.toString();
     }
 
@@ -448,10 +464,21 @@ public class AgentRunWorker {
                         "运行状态已变化，不能完成当前运行");
             }
             taskService.updateRunStatus(task.getId(), run.getId(), "SUCCEEDED");
-            artifactService.createInitialArtifact(new CreateInitialArtifactCommand(
+            ArtifactDetailResponse artifact = artifactService.createInitialArtifact(
+                    new CreateInitialArtifactCommand(
                     task.getWorkspaceId(), task.getId(), run.getId(),
                     task.getExpectedArtifactType(), task.getTitle(), output,
-                    "MARKDOWN", "技术学习 Agent 初始生成"));
+                    "MARKDOWN",
+                    "CONTENT_CREATION".equals(task.getModuleType())
+                            ? "内容创作 Agent 生成" : "技术学习 Agent 初始生成"));
+            if (contentVersionLifecycleService != null
+                    && "CONTENT_CREATION".equals(task.getModuleType())) {
+                contentVersionLifecycleService.completeFromArtifact(
+                        task.getId(),
+                        run.getId(),
+                        artifact.id(),
+                        artifactService.currentVersionId(artifact.id()));
+            }
             return runEventService.append(run.getId(), call.getId(), "run.completed",
                     "运行已完成",
                     Map.of("status", "SUCCEEDED", "outputLength", output.length()));
@@ -665,6 +692,10 @@ public class AgentRunWorker {
                     "运行状态已变化，不能完成取消");
         }
         taskService.updateRunStatus(run.getTaskId(), run.getId(), "CANCELLED");
+        if (contentVersionLifecycleService != null
+                && isContentCreationRun(run)) {
+            contentVersionLifecycleService.cancel(run.getTaskId());
+        }
         return runEventService.append(run.getId(), call == null ? null : call.getId(),
                 "run.cancelled", "运行已取消", Map.of("status", "CANCELLED"));
     }
@@ -682,6 +713,10 @@ public class AgentRunWorker {
                     "运行状态已变化，不能完成暂停");
         }
         taskService.updateRunStatus(run.getTaskId(), run.getId(), "PAUSED");
+        if (contentVersionLifecycleService != null
+                && isContentCreationRun(run)) {
+            contentVersionLifecycleService.pause(run.getTaskId());
+        }
         return runEventService.append(run.getId(), call == null ? null : call.getId(),
                 "run.paused", "运行已暂停", Map.of("status", "PAUSED"));
     }
@@ -701,9 +736,19 @@ public class AgentRunWorker {
                     "运行状态已变化，不能写入失败状态");
         }
         taskService.updateRunStatus(run.getTaskId(), run.getId(), "FAILED");
+        if (contentVersionLifecycleService != null
+                && isContentCreationRun(run)) {
+            contentVersionLifecycleService.fail(
+                    run.getTaskId(), errorCode.name(), summary);
+        }
         return runEventService.append(run.getId(), call == null ? null : call.getId(),
                 "run.failed", summary,
                 Map.of("status", "FAILED", "errorCode", errorCode.name()));
+    }
+
+    private boolean isContentCreationRun(AgentRunRecord run) {
+        TaskRecord task = taskService.requireTask(run.getTaskId());
+        return "CONTENT_CREATION".equals(task.getModuleType());
     }
 
     private boolean isTerminal(String status) {

@@ -45,7 +45,7 @@ public class AgentService {
             new TypeReference<>() {
             };
     private static final Set<String> MODULE_TYPES =
-            Set.of("TECH_LEARNING", "DATA_ANALYSIS");
+            Set.of("TECH_LEARNING", "DATA_ANALYSIS", "CONTENT_CREATION");
 
     private final AgentDefinitionMapper definitionMapper;
     private final AgentVersionMapper versionMapper;
@@ -406,7 +406,8 @@ public class AgentService {
         Object moduleType = configuration.get("moduleType");
         if (moduleType == null
                 || !MODULE_TYPES.contains(moduleType.toString().trim().toUpperCase())) {
-            throw invalidVersion("configuration.moduleType 必须为 TECH_LEARNING 或 DATA_ANALYSIS");
+            throw invalidVersion(
+                    "configuration.moduleType 必须为 TECH_LEARNING、DATA_ANALYSIS 或 CONTENT_CREATION");
         }
         Map<String, Long> boundTools = new LinkedHashMap<>();
         for (Long toolVersionId : readVersionIds(configuration.get("toolVersionIds"),

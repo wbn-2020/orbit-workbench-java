@@ -38,7 +38,8 @@ public class ArtifactService {
     private static final Set<String> CONTENT_FORMATS = Set.of("MARKDOWN", "JSON", "CSV");
     private static final Set<String> ARTIFACT_TYPES = Set.of(
             "LEARNING_NOTE", "QUIZ", "SUMMARY",
-            "ANALYSIS_REPORT", "CHART_SPEC", "DATA_EXPORT");
+            "ANALYSIS_REPORT", "CHART_SPEC", "DATA_EXPORT",
+            "CONTENT_DRAFT", "CONTENT_REVIEW");
 
     private final ArtifactMapper artifactMapper;
     private final ArtifactVersionMapper artifactVersionMapper;
@@ -118,6 +119,16 @@ public class ArtifactService {
                     "成果版本不存在");
         }
         return toVersionResponse(version);
+    }
+
+    @Transactional(readOnly = true)
+    public Long currentVersionId(Long artifactId) {
+        ArtifactVersionRecord version = artifactVersionMapper.findLatestByArtifactId(artifactId);
+        if (version == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND,
+                    "成果版本不存在");
+        }
+        return version.getId();
     }
 
     @Transactional

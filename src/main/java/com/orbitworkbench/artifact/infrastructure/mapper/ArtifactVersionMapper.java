@@ -10,6 +10,8 @@ public interface ArtifactVersionMapper {
 
     List<ArtifactVersionRecord> findByArtifactId(@Param("artifactId") Long artifactId);
 
+    ArtifactVersionRecord findLatestByArtifactId(@Param("artifactId") Long artifactId);
+
     ArtifactVersionRecord findByArtifactIdAndId(@Param("artifactId") Long artifactId,
                                                 @Param("id") Long id);
 }

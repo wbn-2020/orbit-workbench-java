@@ -25,12 +25,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskService {
 
     private static final Set<String> EDITABLE_STATUSES = Set.of("DRAFT", "READY", "PAUSED");
-    private static final Set<String> MODULE_TYPES = Set.of("TECH_LEARNING", "DATA_ANALYSIS");
+    private static final Set<String> MODULE_TYPES =
+            Set.of("TECH_LEARNING", "DATA_ANALYSIS", "CONTENT_CREATION");
     private static final Set<String> PRIORITIES = Set.of("LOW", "NORMAL", "HIGH");
     private static final Set<String> TECH_LEARNING_ARTIFACT_TYPES =
             Set.of("LEARNING_NOTE", "QUIZ", "SUMMARY");
     private static final Set<String> DATA_ANALYSIS_ARTIFACT_TYPES =
             Set.of("ANALYSIS_REPORT", "CHART_SPEC", "DATA_EXPORT");
+    private static final Set<String> CONTENT_ARTIFACT_TYPES =
+            Set.of("CONTENT_DRAFT", "CONTENT_REVIEW");
 
     private final TaskMapper taskMapper;
 
@@ -296,15 +299,17 @@ public class TaskService {
         String normalizedArtifactType = expectedArtifactType.trim().toUpperCase();
         if (!MODULE_TYPES.contains(normalizedModuleType)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
-                    "moduleType 必须为 TECH_LEARNING 或 DATA_ANALYSIS");
+                    "moduleType 必须为 TECH_LEARNING、DATA_ANALYSIS 或 CONTENT_CREATION");
         }
         if (!PRIORITIES.contains(priority.trim().toUpperCase())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
                     "priority 必须为 LOW、NORMAL 或 HIGH");
         }
-        Set<String> supportedArtifactTypes = "DATA_ANALYSIS".equals(normalizedModuleType)
-                ? DATA_ANALYSIS_ARTIFACT_TYPES
-                : TECH_LEARNING_ARTIFACT_TYPES;
+        Set<String> supportedArtifactTypes = switch (normalizedModuleType) {
+            case "DATA_ANALYSIS" -> DATA_ANALYSIS_ARTIFACT_TYPES;
+            case "CONTENT_CREATION" -> CONTENT_ARTIFACT_TYPES;
+            default -> TECH_LEARNING_ARTIFACT_TYPES;
+        };
         if (!supportedArtifactTypes.contains(normalizedArtifactType)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
                     "expectedArtifactType 与 moduleType 不匹配");
