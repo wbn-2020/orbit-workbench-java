@@ -77,6 +77,40 @@ class AiConnectionServiceTest {
     }
 
     @Test
+    void draftConnectionTestPreservesCompleteRequestUrl() {
+        stubDraftRecord();
+        when(gateway.stream(any(AiInvocation.class))).thenReturn(Flux.just(
+                AiStreamEvent.started(),
+                AiStreamEvent.delta("OK"),
+                new AiStreamEvent(
+                        "run.completed", null, null, null, null,
+                        true, null, null)));
+        DraftTestRequest request = new DraftTestRequest(
+                "test",
+                "CUSTOM_OPENAI_COMPATIBLE",
+                "https://chatapi.weixin.qq.com/openai/v1/chat/completions",
+                "/chat/completions",
+                "CHAT_COMPLETIONS",
+                "test-model",
+                "secret",
+                30000,
+                true,
+                "Reply with OK only.");
+
+        service.testDraft(request);
+
+        ArgumentCaptor<AiInvocation> invocationCaptor =
+                ArgumentCaptor.forClass(AiInvocation.class);
+        verify(gateway).stream(invocationCaptor.capture());
+        assertEquals(
+                "https://chatapi.weixin.qq.com/openai/v1/chat/completions",
+                invocationCaptor.getValue().connection().baseUrl());
+        assertEquals(
+                "/chat/completions",
+                invocationCaptor.getValue().connection().endpointPath());
+    }
+
+    @Test
     void connectionTestRejectsCompletionWithoutText() {
         stubDraftRecord();
         when(gateway.stream(any(AiInvocation.class))).thenReturn(Flux.just(

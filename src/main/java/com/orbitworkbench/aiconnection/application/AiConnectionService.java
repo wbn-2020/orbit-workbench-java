@@ -11,12 +11,14 @@ import com.orbitworkbench.aiconnection.api.AiConnectionDtos.DraftTestRequest;
 import com.orbitworkbench.aiconnection.api.AiConnectionDtos.SavedTestRequest;
 import com.orbitworkbench.aiconnection.api.AiConnectionDtos.UpdateConnectionRequest;
 import com.orbitworkbench.aiconnection.domain.AiConnectionRecord;
+import com.orbitworkbench.aiconnection.domain.AiProtocol;
+import com.orbitworkbench.aiconnection.domain.ConnectionAddressNormalizer;
+import com.orbitworkbench.aiconnection.domain.ConnectionAddressNormalizer.NormalizedAddress;
 import com.orbitworkbench.aiconnection.domain.ConnectionTestRecord;
 import com.orbitworkbench.aiconnection.infrastructure.mapper.AiConnectionMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.PageResult;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -43,25 +45,47 @@ public class AiConnectionService {
     private final CredentialCipher cipher;
     private final ModelGateway gateway;
     private final TransactionTemplate transactionTemplate;
+    private final ConnectionAddressNormalizer addressNormalizer;
     private final ConnectionTestLimits testLimits;
 
     @Autowired
     public AiConnectionService(AiConnectionMapper mapper,
                                CredentialCipher cipher,
                                ModelGateway gateway,
-                               TransactionTemplate transactionTemplate) {
-        this(mapper, cipher, gateway, transactionTemplate, DEFAULT_TEST_LIMITS);
+                               TransactionTemplate transactionTemplate,
+                               ConnectionAddressNormalizer addressNormalizer) {
+        this(mapper, cipher, gateway, transactionTemplate, addressNormalizer,
+                DEFAULT_TEST_LIMITS);
+    }
+
+    AiConnectionService(AiConnectionMapper mapper,
+                         CredentialCipher cipher,
+                         ModelGateway gateway,
+                         TransactionTemplate transactionTemplate,
+                         ConnectionTestLimits testLimits) {
+        this(mapper, cipher, gateway, transactionTemplate,
+                new ConnectionAddressNormalizer(), testLimits);
     }
 
     AiConnectionService(AiConnectionMapper mapper,
                         CredentialCipher cipher,
                         ModelGateway gateway,
-                        TransactionTemplate transactionTemplate,
-                        ConnectionTestLimits testLimits) {
+                        TransactionTemplate transactionTemplate) {
+        this(mapper, cipher, gateway, transactionTemplate,
+                new ConnectionAddressNormalizer(), DEFAULT_TEST_LIMITS);
+    }
+
+    private AiConnectionService(AiConnectionMapper mapper,
+                                CredentialCipher cipher,
+                                ModelGateway gateway,
+                                TransactionTemplate transactionTemplate,
+                                ConnectionAddressNormalizer addressNormalizer,
+                                ConnectionTestLimits testLimits) {
         this.mapper = mapper;
         this.cipher = cipher;
         this.gateway = gateway;
         this.transactionTemplate = transactionTemplate;
+        this.addressNormalizer = addressNormalizer;
         this.testLimits = testLimits;
     }
 
@@ -329,88 +353,8 @@ public class AiConnectionService {
     private NormalizedAddress normalizeAddress(String rawBaseUrl,
                                                String rawEndpointPath,
                                                String protocol) {
-        try {
-            URI uri = URI.create(rawBaseUrl.trim());
-            if (uri.getScheme() == null
-                    || (!"http".equalsIgnoreCase(uri.getScheme())
-                    && !"https".equalsIgnoreCase(uri.getScheme()))
-                    || uri.getHost() == null || uri.getUserInfo() != null
-                    || uri.getQuery() != null || uri.getFragment() != null) {
-                throw new IllegalArgumentException();
-            }
-            String path = normalizePath(uri.getPath());
-            String rawEndpoint = rawEndpointPath == null ? "" : rawEndpointPath.trim();
-            String endpoint = rawEndpoint.isBlank() ? "" : normalizePath(rawEndpoint);
-            if (rawEndpoint.startsWith("http://") || rawEndpoint.startsWith("https://")) {
-                URI endpointUri = URI.create(rawEndpoint);
-                if (!uri.getScheme().equalsIgnoreCase(endpointUri.getScheme())
-                        || !uri.getHost().equalsIgnoreCase(endpointUri.getHost())
-                        || uri.getPort() != endpointUri.getPort()) {
-                    throw new IllegalArgumentException("endpoint origin");
-                }
-                String absoluteEndpoint = normalizePath(endpointUri.getPath());
-                if (!path.isBlank() && absoluteEndpoint.startsWith(path + "/")) {
-                    endpoint = absoluteEndpoint.substring(path.length());
-                } else if (!path.isBlank() && absoluteEndpoint.equals(path)) {
-                    endpoint = endpointSuffix(absoluteEndpoint, protocol);
-                    path = path.substring(0, path.length() - endpoint.length());
-                } else {
-                    endpoint = absoluteEndpoint;
-                }
-            }
-            if (endpoint.isBlank()) {
-                endpoint = endpointSuffix(path, protocol);
-            }
-            if (path.endsWith(endpoint) && path.length() > endpoint.length()) {
-                path = path.substring(0, path.length() - endpoint.length());
-            }
-            String normalizedBase = new URI(uri.getScheme().toLowerCase(), null,
-                    uri.getHost(), uri.getPort(), path, null, null).toString();
-            return new NormalizedAddress(normalizedBase, endpoint);
-        } catch (Exception exception) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED, "baseUrl 必须是合法 HTTP(S) 地址");
-        }
-    }
-
-    private String normalizePath(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return "";
-        }
-        String value = raw.trim();
-        if (value.startsWith("http://") || value.startsWith("https://")) {
-            URI endpoint = URI.create(value);
-            if (endpoint.getHost() == null || endpoint.getQuery() != null
-                    || endpoint.getFragment() != null) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
-                        "endpointPath 必须是不带查询参数的路径");
-            }
-            value = endpoint.getPath();
-        }
-        if (value == null || value.isBlank() || "/".equals(value)) {
-            return "";
-        }
-        if (value.contains("?") || value.contains("#")
-                || value.contains(" ") || value.contains("\t")) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
-                    "endpointPath 不能包含查询参数或空白字符");
-        }
-        value = value.replace('\\', '/');
-        if (!value.startsWith("/")) value = "/" + value;
-        while (value.contains("//")) value = value.replace("//", "/");
-        while (value.length() > 1 && value.endsWith("/")) {
-            value = value.substring(0, value.length() - 1);
-        }
-        return value;
-    }
-
-    private String endpointSuffix(String path, String protocol) {
-        if (path.endsWith("/chat/completions")) {
-            return "/chat/completions";
-        }
-        if (path.endsWith("/responses")) {
-            return "/responses";
-        }
-        return "RESPONSES".equals(protocol) ? "/responses" : "/chat/completions";
+        return addressNormalizer.normalize(
+                rawBaseUrl, rawEndpointPath, AiProtocol.valueOf(protocol));
     }
 
     private String normalizeProtocol(String raw) {
@@ -507,9 +451,6 @@ public class AiConnectionService {
                     ErrorCode.OUTPUT_LIMIT_EXCEEDED,
                     message);
         }
-    }
-
-    private record NormalizedAddress(String baseUrl, String endpointPath) {
     }
 
     public record AiConnectionRuntimeConfig(Long connectionId, Long modelProfileId, String connectionName,

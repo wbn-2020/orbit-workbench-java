@@ -42,14 +42,14 @@ class ConnectionAddressNormalizerTest {
     }
 
     @Test
-    void extractsEndpointAlreadyIncludedInBaseUrl() {
+    void preservesCompleteEndpointUrl() {
         ConnectionAddressNormalizer.NormalizedAddress result = normalizer.normalize(
                 "https://api.example.com/v1/chat/completions/",
                 null,
                 AiProtocol.CHAT_COMPLETIONS);
 
         assertAll(
-                () -> assertEquals("https://api.example.com/v1", result.baseUrl()),
+                () -> assertEquals("https://api.example.com/v1/chat/completions", result.baseUrl()),
                 () -> assertEquals("/chat/completions", result.endpointPath()));
     }
 
@@ -110,6 +110,15 @@ class ConnectionAddressNormalizerTest {
                 "responses");
 
         assertEquals(URI.create("https://api.example.com/v1/responses"), result);
+    }
+
+    @Test
+    void usesCompleteEndpointUrlWithoutAppendingEndpointAgain() {
+        URI result = normalizer.requestUri(
+                "https://api.example.com/v1/chat/completions",
+                "/chat/completions");
+
+        assertEquals(URI.create("https://api.example.com/v1/chat/completions"), result);
     }
 
     private void assertValidationFailure(Executable executable) {

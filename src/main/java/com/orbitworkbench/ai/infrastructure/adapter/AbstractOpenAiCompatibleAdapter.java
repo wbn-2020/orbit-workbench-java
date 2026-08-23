@@ -188,6 +188,9 @@ public abstract class AbstractOpenAiCompatibleAdapter
                 ? base.substring(0, base.length() - 1) : base;
         String endpoint = invocation.connection().endpointPath();
         String normalizedEndpoint = endpoint.startsWith("/") ? endpoint : "/" + endpoint;
+        if (URI.create(normalizedBase).getPath().endsWith(normalizedEndpoint)) {
+            return URI.create(normalizedBase);
+        }
         return URI.create(normalizedBase + normalizedEndpoint);
     }
 

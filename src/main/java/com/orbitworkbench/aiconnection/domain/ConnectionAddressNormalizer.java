@@ -39,12 +39,8 @@ public class ConnectionAddressNormalizer {
         String lowerBasePath = basePath.toLowerCase(Locale.ROOT);
         if (endpointValue.isBlank() && lowerBasePath.endsWith("/chat/completions")) {
             endpointPath = "/chat/completions";
-            basePath = basePath.substring(0, basePath.length() - endpointPath.length());
         } else if (endpointValue.isBlank() && lowerBasePath.endsWith("/responses")) {
             endpointPath = "/responses";
-            basePath = basePath.substring(0, basePath.length() - endpointPath.length());
-        } else if (basePath.endsWith(endpointPath) && basePath.length() > endpointPath.length()) {
-            basePath = basePath.substring(0, basePath.length() - endpointPath.length());
         }
 
         String normalizedBase = buildBaseUrl(base, basePath);
@@ -54,6 +50,9 @@ public class ConnectionAddressNormalizer {
     public URI requestUri(String baseUrl, String endpointPath) {
         String base = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         String path = endpointPath.startsWith("/") ? endpointPath : "/" + endpointPath;
+        if (URI.create(base).getPath().endsWith(path)) {
+            return URI.create(base);
+        }
         return URI.create(base + path);
     }
 

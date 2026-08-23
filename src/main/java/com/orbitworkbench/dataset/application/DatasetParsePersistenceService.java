@@ -14,7 +14,9 @@ import com.orbitworkbench.storage.application.LocalStorageService;
 import com.orbitworkbench.storage.application.StorageCleanupAuditService;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,6 +88,7 @@ public class DatasetParsePersistenceService {
                 new ArrayList<>(datasetMapper.findPreviewStorageRefs(datasetId));
         List<String> oldProfileRefs =
                 new ArrayList<>(datasetMapper.findProfileStorageRefs(datasetId));
+        Map<ColumnIdentity, String> effectiveTypes = existingEffectiveTypes(datasetId);
         Instant now = Instant.now();
         datasetMapper.clearActiveSheet(datasetId, now);
         datasetMapper.deleteProfiles(datasetId);
@@ -125,7 +128,11 @@ public class DatasetParsePersistenceService {
                 column.setColumnName(parsedColumn.columnName());
                 column.setNormalizedName(parsedColumn.normalizedName());
                 column.setInferredType(parsedColumn.inferredType());
-                column.setEffectiveType(parsedColumn.inferredType());
+                column.setEffectiveType(effectiveTypes.getOrDefault(
+                        new ColumnIdentity(
+                                parsed.sheetIndex(),
+                                parsedColumn.normalizedName()),
+                        parsedColumn.inferredType()));
                 column.setNullable(parsedColumn.nullable());
                 column.setSampleValuesJson(writeJson(parsedColumn.sampleValues()));
                 column.setVersion(1L);
@@ -231,6 +238,24 @@ public class DatasetParsePersistenceService {
                     ErrorCode.DATASET_PARSE_FAILED,
                     "数据集摘要无法序列化");
         }
+    }
+
+    private Map<ColumnIdentity, String> existingEffectiveTypes(Long datasetId) {
+        Map<ColumnIdentity, String> result = new HashMap<>();
+        for (DatasetSheetRecord sheet : datasetMapper.findSheets(datasetId)) {
+            for (DatasetColumnRecord column : datasetMapper.findColumns(
+                    datasetId, sheet.getId())) {
+                result.put(
+                        new ColumnIdentity(
+                                sheet.getSheetIndex(),
+                                column.getNormalizedName()),
+                        column.getEffectiveType());
+            }
+        }
+        return result;
+    }
+
+    private record ColumnIdentity(Integer sheetIndex, String normalizedName) {
     }
 
     public record StoredParsedSheet(
