@@ -372,9 +372,46 @@ public class MemoryService {
     }
 
     public String stripCandidateBlocks(String output) {
-        return output == null
-                ? ""
-                : CANDIDATE_BLOCK.matcher(output).replaceAll("").stripTrailing();
+        if (output == null) {
+            return "";
+        }
+        StringBuilder stripped = new StringBuilder(output.length());
+        int cursor = 0;
+        var matcher = CANDIDATE_BLOCK.matcher(output);
+        while (matcher.find()) {
+            stripped.append(output, cursor, matcher.start());
+            int nextCursor = matcher.end();
+            if (endsWithLineBreak(stripped) && nextCursor < output.length()) {
+                nextCursor = skipLineBreakAndIndent(output, nextCursor);
+            }
+            cursor = nextCursor;
+        }
+        stripped.append(output, cursor, output.length());
+        return stripped.toString().stripTrailing();
+    }
+
+    private boolean endsWithLineBreak(StringBuilder value) {
+        return value.length() > 0
+                && (value.charAt(value.length() - 1) == '\n'
+                || value.charAt(value.length() - 1) == '\r');
+    }
+
+    private int skipLineBreakAndIndent(String value, int cursor) {
+        if (value.charAt(cursor) == '\r') {
+            cursor++;
+            if (cursor < value.length() && value.charAt(cursor) == '\n') {
+                cursor++;
+            }
+        } else if (value.charAt(cursor) == '\n') {
+            cursor++;
+        } else {
+            return cursor;
+        }
+        while (cursor < value.length()
+                && (value.charAt(cursor) == ' ' || value.charAt(cursor) == '\t')) {
+            cursor++;
+        }
+        return cursor;
     }
 
     private MemoryResponse updateStatus(Long id,

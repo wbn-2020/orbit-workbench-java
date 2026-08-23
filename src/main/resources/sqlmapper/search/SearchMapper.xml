@@ -6,8 +6,8 @@
 
     <resultMap id="SearchResultMap"
                type="com.orbitworkbench.search.infrastructure.mapper.SearchResultRow">
-        <result property="resourceType" column="resource_type"/>
         <id property="resourceId" column="resource_id"/>
+        <result property="resourceType" column="resource_type"/>
         <result property="title" column="title"/>
         <result property="summary" column="summary"/>
         <result property="updatedAt" column="updated_at"/>

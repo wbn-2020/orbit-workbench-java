@@ -377,7 +377,7 @@ public class ContentProjectService {
     }
 
     private ContentProjectResponse toResponse(ContentProjectRecord project) {
-        List<ContentProjectMaterialResponse> materials = projectMapper
+        List<ContentMaterialResponse> materials = projectMapper
                 .findMaterials(project.getId())
                 .stream()
                 .map(this::toMaterialResponse)

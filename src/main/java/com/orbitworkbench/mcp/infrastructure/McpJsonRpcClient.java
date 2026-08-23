@@ -17,12 +17,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.core.io.buffer.DataBufferLimitException;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.reactive.ClientHttpResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import reactor.core.publisher.Mono;
@@ -206,9 +208,9 @@ public class McpJsonRpcClient implements McpClient {
         }
     }
 
-    private Mono<RpcResponse> readResponse(ClientHttpResponse response,
+    private Mono<RpcResponse> readResponse(ClientResponse response,
                                            int maxBytes) {
-        HttpStatusCode status = response.getStatusCode();
+        HttpStatusCode status = response.statusCode();
         if (status.is3xxRedirection()) {
             return response.releaseBody().then(Mono.error(new ApiException(
                     HttpStatus.BAD_GATEWAY,
@@ -216,7 +218,7 @@ public class McpJsonRpcClient implements McpClient {
                     "MCP Server 禁止重定向")));
         }
         int[] bytesRead = {0};
-        return response.getBody()
+        return response.bodyToFlux(DataBuffer.class)
                 .reduce(new StringBuilder(),
                         (builder, buffer) -> {
                             byte[] bytes = new byte[buffer.readableByteCount()];
@@ -241,14 +243,14 @@ public class McpJsonRpcClient implements McpClient {
                                 ErrorCode.MCP_SERVER_UNAVAILABLE,
                                 "MCP Server 返回 HTTP " + status.value());
                     }
-                    return new RpcResponse(
+                            return new RpcResponse(
                             body,
-                            response.getHeaders());
+                            response.headers().asHttpHeaders());
                 });
     }
 
-    private Mono<Void> readNotificationResponse(ClientHttpResponse response) {
-        if (!response.getStatusCode().is2xxSuccessful()) {
+    private Mono<Void> readNotificationResponse(ClientResponse response) {
+        if (!response.statusCode().is2xxSuccessful()) {
             return response.releaseBody().then(Mono.error(new ApiException(
                     HttpStatus.BAD_GATEWAY,
                     ErrorCode.MCP_SERVER_UNAVAILABLE,

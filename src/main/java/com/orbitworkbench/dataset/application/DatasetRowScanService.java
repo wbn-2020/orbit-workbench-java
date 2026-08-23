@@ -86,7 +86,7 @@ public class DatasetRowScanService {
         CSVFormat format = CSVFormat.DEFAULT.builder()
                 .setIgnoreEmptyLines(false)
                 .setTrim(false)
-                .get();
+                .build();
         try (CSVParser parser = new CSVParser(reader, format)) {
             boolean header = true;
             long rowNumber = 0;

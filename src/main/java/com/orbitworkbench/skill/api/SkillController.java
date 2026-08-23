@@ -4,6 +4,7 @@ import com.orbitworkbench.skill.api.SkillDtos.SkillCommandRequest;
 import com.orbitworkbench.skill.api.SkillDtos.SkillRequest;
 import com.orbitworkbench.skill.api.SkillDtos.SkillResponse;
 import com.orbitworkbench.skill.api.SkillDtos.SkillVersionRequest;
+import com.orbitworkbench.skill.application.SkillService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;

@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +45,7 @@ public class AiConnectionService {
     private final TransactionTemplate transactionTemplate;
     private final ConnectionTestLimits testLimits;
 
+    @Autowired
     public AiConnectionService(AiConnectionMapper mapper,
                                CredentialCipher cipher,
                                ModelGateway gateway,

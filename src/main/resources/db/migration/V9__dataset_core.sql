@@ -124,6 +124,6 @@ CREATE TABLE dataset_profile (
     CONSTRAINT fk_dataset_profile_dataset FOREIGN KEY (dataset_id) REFERENCES dataset(id),
     CONSTRAINT fk_dataset_profile_sheet_dataset FOREIGN KEY (sheet_id, dataset_id)
         REFERENCES dataset_sheet(id, dataset_id),
-    CONSTRAINT chk_dataset_profile_version CHECK (profile_version >= 1),
+    CONSTRAINT chk_dataset_profile_profile_version CHECK (profile_version >= 1),
     CONSTRAINT chk_dataset_profile_counts CHECK (row_count >= 0 AND column_count >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -98,7 +98,7 @@ public class DatasetFileParserService {
         CSVFormat format = CSVFormat.DEFAULT.builder()
                 .setIgnoreEmptyLines(false)
                 .setTrim(false)
-                .get();
+                .build();
         try (CSVParser parser = new CSVParser(reader, format)) {
             List<String> headers = null;
             SheetAccumulator sheet = null;

@@ -179,7 +179,7 @@ class AgentRunServiceTest {
                 () -> assertEquals(12L, response.id()),
                 () -> assertEquals("QUEUED", response.status()),
                 () -> assertEquals(11L, response.retryOfRunId()),
-                () -> verify(taskService).validateLockedRunInput(task),
+                  () -> verify(taskService).validateLockedRunInput(task, 33L),
                 () -> verify(taskService).attachRun(task, 12L, java.util.Set.of("PAUSED")),
                 () -> verify(agentRunMapper, never()).updateStatus(
                         eq(11L), any(), any(), any(), any(), any()),

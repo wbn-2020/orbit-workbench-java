@@ -88,6 +88,7 @@ ALTER TABLE tool_call
     ADD KEY idx_tool_call_tool_status_created
         (tool_code, status, created_at, id),
     ADD KEY idx_tool_call_step (step_id, id),
+    ADD UNIQUE KEY uk_tool_call_id_run (id, agent_run_id),
     ADD CONSTRAINT fk_tool_call_step_run FOREIGN KEY (step_id, agent_run_id)
         REFERENCES agent_run_step(id, agent_run_id),
     ADD CONSTRAINT fk_tool_call_retry FOREIGN KEY (retry_of_tool_call_id)

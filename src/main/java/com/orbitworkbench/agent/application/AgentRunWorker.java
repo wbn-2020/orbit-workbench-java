@@ -214,7 +214,7 @@ public class AgentRunWorker {
                         run, task, completedDataAnalysis);
                 memoryProposal = proposeMemoryCandidates(
                         () -> memoryService.proposeFromAgentOutput(
-                                run.getId(), originalReport));
+                                runId, originalReport));
                 publishMemoryProposalEvent(
                         run.getId(),
                         completedDataAnalysis.finalModelCall().getId(),
@@ -295,7 +295,7 @@ public class AgentRunWorker {
                     providerRequestId.get(), usage.get());
             memoryProposal = proposeMemoryCandidates(
                     () -> memoryService.proposeFromAgentOutput(
-                            run.getId(), output.toString()));
+                            runId, output.toString()));
             publishMemoryProposalEvent(run.getId(), modelCall.getId(), memoryProposal);
         } catch (AgentRunControlException exception) {
             if (modelCall == null) {

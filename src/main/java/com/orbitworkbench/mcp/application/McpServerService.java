@@ -312,9 +312,9 @@ public class McpServerService {
         version.setRequiresConfirmation(true);
         version.setTimeoutMs(maxTimeoutMillis());
         version.setMaxResultBytes(maxResultBytes());
-        version.setCapabilitiesJson(writeJson(Map.of(
+        version.setCapabilitiesJson(writeJson(objectMapper.valueToTree(Map.of(
                 "source", "MCP",
-                "serverId", serverId)));
+                "serverId", serverId))));
         version.setPublishedAt(now);
         version.setCreatedAt(now);
         version.setUpdatedAt(now);
