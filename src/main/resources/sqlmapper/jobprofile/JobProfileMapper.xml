@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.jobprofile.infrastructure.mapper.JobProfileMapper">
+    <resultMap id="JobProfileMap" type="com.orbitworkbench.jobprofile.domain.JobProfileRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="targetRole" column="target_role"/>
+        <result property="targetExperienceBand" column="target_experience_band"/>
+        <result property="careerStage" column="career_stage"/>
+        <result property="targetLevel" column="target_level"/>
+        <result property="targetCompany" column="target_company"/>
+        <result property="javaSkillLevel" column="java_skill_level"/>
+        <result property="aiSkillLevel" column="ai_skill_level"/>
+        <result property="targetInterviewDate" column="target_interview_date"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findByUserId" resultMap="JobProfileMap">
+        SELECT id, user_id, target_role, target_experience_band, career_stage,
+               target_level, target_company, java_skill_level, ai_skill_level,
+               target_interview_date, created_at, updated_at
+        FROM job_profile
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="insert" parameterType="com.orbitworkbench.jobprofile.domain.JobProfileRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_profile(
+            user_id, target_role, target_experience_band, career_stage, target_level,
+            target_company, java_skill_level, ai_skill_level, target_interview_date,
+            created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{targetRole}, #{targetExperienceBand}, #{careerStage}, #{targetLevel},
+            #{targetCompany}, #{javaSkillLevel}, #{aiSkillLevel}, #{targetInterviewDate},
+            #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <update id="update" parameterType="com.orbitworkbench.jobprofile.domain.JobProfileRecord">
+        UPDATE job_profile
+        SET target_role = #{targetRole},
+            target_experience_band = #{targetExperienceBand},
+            career_stage = #{careerStage},
+            target_level = #{targetLevel},
+            target_company = #{targetCompany},
+            java_skill_level = #{javaSkillLevel},
+            ai_skill_level = #{aiSkillLevel},
+            target_interview_date = #{targetInterviewDate},
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+</mapper>

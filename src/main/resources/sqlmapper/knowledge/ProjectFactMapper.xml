@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.knowledge.infrastructure.mapper.ProjectFactMapper">
+    <resultMap id="ProjectFactMap" type="com.orbitworkbench.knowledge.domain.ProjectFactRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="projectVersionId" column="project_version_id"/>
+        <result property="factType" column="fact_type"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="source" column="source"/>
+        <result property="confirmationStatus" column="confirmation_status"/>
+        <result property="confidence" column="confidence"/>
+        <result property="confirmedAt" column="confirmed_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, project_version_id, fact_type, title, content, source,
+        confirmation_status, confidence, confirmed_at, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.knowledge.domain.ProjectFactRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project_fact(
+            user_id, project_version_id, fact_type, title, content, source,
+            confirmation_status, confidence, confirmed_at, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{projectVersionId}, #{factType}, #{title}, #{content}, #{source},
+            #{confirmationStatus}, #{confidence}, #{confirmedAt}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <delete id="deleteAnalyzedByVersion">
+        DELETE FROM project_fact
+        WHERE user_id = #{userId}
+          AND project_version_id = #{projectVersionId}
+          AND source = 'AI_ANALYZED'
+          AND confirmation_status = 'ANALYZED'
+    </delete>
+
+    <select id="listByVersion" resultMap="ProjectFactMap">
+        SELECT <include refid="allColumns"/>
+        FROM project_fact
+        WHERE user_id = #{userId} AND project_version_id = #{projectVersionId}
+        ORDER BY
+            CASE confirmation_status WHEN 'CONFIRMED' THEN 0 ELSE 1 END,
+            id ASC
+    </select>
+
+    <select id="findByIdAndUser" resultMap="ProjectFactMap">
+        SELECT <include refid="allColumns"/>
+        FROM project_fact
+        WHERE id = #{id} AND user_id = #{userId}
+    </select>
+
+    <update id="confirm">
+        UPDATE project_fact
+        SET fact_type = #{factType},
+            title = #{title},
+            content = #{content},
+            source = 'USER_CONFIRMED',
+            confirmation_status = 'CONFIRMED',
+            confirmed_at = #{confirmedAt},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND confirmation_status &lt;&gt; 'ARCHIVED'
+    </update>
+
+    <update id="archive">
+        UPDATE project_fact
+        SET confirmation_status = 'ARCHIVED',
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+</mapper>

@@ -33,6 +33,7 @@ public class LocalStorageService {
     private static final String DATASET_SNAPSHOTS_BUCKET = "dataset-snapshots";
     private static final String TOOL_SNAPSHOTS_BUCKET = "tool-snapshots";
     private static final String EXPORTS_BUCKET = "exports";
+    private static final String PROJECTS_BUCKET = "projects";
     private static final String TEMP_BUCKET = "temp";
     private static final String TRASH_BUCKET = ".trash";
     private static final int BUFFER_SIZE = 8192;
@@ -75,6 +76,10 @@ public class LocalStorageService {
 
     public StoredFile storeExport(InputStream input, long maxBytes) {
         return store(EXPORTS_BUCKET, input, maxBytes);
+    }
+
+    public StoredFile storeProjectSource(InputStream input, long maxBytes) {
+        return store(PROJECTS_BUCKET, input, maxBytes);
     }
 
     public String readUtf8(String storageRef) {

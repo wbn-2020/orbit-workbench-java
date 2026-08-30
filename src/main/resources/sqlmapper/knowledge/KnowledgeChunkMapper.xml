@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.knowledge.infrastructure.mapper.KnowledgeChunkMapper">
+    <resultMap id="KnowledgeChunkMap" type="com.orbitworkbench.knowledge.domain.KnowledgeChunkRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="projectVersionId" column="project_version_id"/>
+        <result property="projectFileId" column="project_file_id"/>
+        <result property="relativePath" column="relative_path"/>
+        <result property="chunkNo" column="chunk_no"/>
+        <result property="content" column="content"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, project_version_id, project_file_id, relative_path, chunk_no, content, created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.knowledge.domain.KnowledgeChunkRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO knowledge_chunk(
+            user_id, project_version_id, project_file_id, relative_path, chunk_no, content, created_at
+        )
+        VALUES(
+            #{userId}, #{projectVersionId}, #{projectFileId}, #{relativePath}, #{chunkNo}, #{content}, #{createdAt}
+        )
+    </insert>
+
+    <delete id="deleteByVersion">
+        DELETE FROM knowledge_chunk
+        WHERE user_id = #{userId} AND project_version_id = #{projectVersionId}
+    </delete>
+
+    <select id="countByVersion" resultType="int">
+        SELECT COUNT(*) FROM knowledge_chunk
+        WHERE user_id = #{userId} AND project_version_id = #{projectVersionId}
+    </select>
+
+    <select id="search" resultMap="KnowledgeChunkMap">
+        SELECT <include refid="allColumns"/>,
+               MATCH(content) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE) AS relevance
+        FROM knowledge_chunk
+        WHERE user_id = #{userId}
+        <if test="projectVersionId != null">
+            AND project_version_id = #{projectVersionId}
+        </if>
+        AND MATCH(content) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE)
+        ORDER BY relevance DESC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchFallbackLike" resultMap="KnowledgeChunkMap">
+        SELECT <include refid="allColumns"/>, 0 AS relevance
+        FROM knowledge_chunk
+        WHERE user_id = #{userId}
+        <if test="projectVersionId != null">
+            AND project_version_id = #{projectVersionId}
+        </if>
+        AND content LIKE CONCAT('%', #{keyword}, '%')
+        ORDER BY project_version_id ASC, chunk_no ASC
+        LIMIT #{limit}
+    </select>
+</mapper>

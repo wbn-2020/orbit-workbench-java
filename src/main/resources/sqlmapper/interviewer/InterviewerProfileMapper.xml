@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.interviewer.infrastructure.mapper.InterviewerProfileMapper">
+    <resultMap id="InterviewerProfileMap" type="com.orbitworkbench.interviewer.domain.InterviewerProfileRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="code" column="code"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="systemPrompt" column="system_prompt"/>
+        <result property="topicMode" column="topic_mode"/>
+        <result property="focusTagsJson" column="focus_tags_json"/>
+        <result property="defaultQuestionLimit" column="default_question_limit"/>
+        <result property="defaultFollowUpLimit" column="default_follow_up_limit"/>
+        <result property="builtIn" column="built_in"/>
+        <result property="archived" column="archived"/>
+        <result property="version" column="version"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, code, name, description, system_prompt, topic_mode, focus_tags_json,
+        default_question_limit, default_follow_up_limit, built_in, archived, version,
+        created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.interviewer.domain.InterviewerProfileRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interviewer_profile(
+            user_id, code, name, description, system_prompt, topic_mode, focus_tags_json,
+            default_question_limit, default_follow_up_limit, built_in, archived, version,
+            created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{code}, #{name}, #{description}, #{systemPrompt}, #{topicMode}, #{focusTagsJson},
+            #{defaultQuestionLimit}, #{defaultFollowUpLimit}, #{builtIn}, #{archived}, #{version},
+            #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findById" resultMap="InterviewerProfileMap">
+        SELECT <include refid="allColumns"/>
+        FROM interviewer_profile
+        WHERE id = #{id}
+    </select>
+
+    <select id="listVisible" resultMap="InterviewerProfileMap">
+        SELECT <include refid="allColumns"/>
+        FROM interviewer_profile
+        WHERE (user_id IS NULL OR user_id = #{userId})
+        <if test="!includeArchived">
+            AND archived = 0
+        </if>
+        ORDER BY built_in DESC, updated_at DESC, id DESC
+    </select>
+
+    <update id="updateProfile">
+        UPDATE interviewer_profile
+        SET name = #{name},
+            description = #{description},
+            system_prompt = #{systemPrompt},
+            topic_mode = #{topicMode},
+            focus_tags_json = #{focusTagsJson},
+            default_question_limit = #{defaultQuestionLimit},
+            default_follow_up_limit = #{defaultFollowUpLimit},
+            version = version + 1,
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND built_in = 0
+    </update>
+
+    <update id="setArchived">
+        UPDATE interviewer_profile
+        SET archived = #{archived},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND built_in = 0
+    </update>
+
+    <delete id="deleteByIdAndUser">
+        DELETE FROM interviewer_profile
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND built_in = 0
+    </delete>
+</mapper>

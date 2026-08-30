@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.interview.infrastructure.mapper.InterviewReportMapper">
+    <resultMap id="InterviewReportMap" type="com.orbitworkbench.interview.domain.InterviewReportRecord">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="status" column="status"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="dimensionScoresJson" column="dimension_scores_json"/>
+        <result property="hiringRecommendation" column="hiring_recommendation"/>
+        <result property="strengthsJson" column="strengths_json"/>
+        <result property="weaknessesJson" column="weaknesses_json"/>
+        <result property="followUpFindingsJson" column="follow_up_findings_json"/>
+        <result property="projectMasteryJson" column="project_mastery_json"/>
+        <result property="knowledgeGapsJson" column="knowledge_gaps_json"/>
+        <result property="studySuggestionsJson" column="study_suggestions_json"/>
+        <result property="failureReason" column="failure_reason"/>
+        <result property="retryCount" column="retry_count"/>
+        <result property="generatedAt" column="generated_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, session_id, status, total_score, dimension_scores_json, hiring_recommendation,
+        strengths_json, weaknesses_json, follow_up_findings_json, project_mastery_json,
+        knowledge_gaps_json, study_suggestions_json, failure_reason, retry_count,
+        generated_at, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.interview.domain.InterviewReportRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_report(
+            session_id, status, total_score, dimension_scores_json, hiring_recommendation,
+            strengths_json, weaknesses_json, follow_up_findings_json, project_mastery_json,
+            knowledge_gaps_json, study_suggestions_json, failure_reason, retry_count,
+            generated_at, created_at, updated_at
+        )
+        VALUES(
+            #{sessionId}, #{status}, #{totalScore}, #{dimensionScoresJson}, #{hiringRecommendation},
+            #{strengthsJson}, #{weaknessesJson}, #{followUpFindingsJson}, #{projectMasteryJson},
+            #{knowledgeGapsJson}, #{studySuggestionsJson}, #{failureReason}, #{retryCount},
+            #{generatedAt}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findBySessionId" resultMap="InterviewReportMap">
+        SELECT <include refid="allColumns"/>
+        FROM interview_report
+        WHERE session_id = #{sessionId}
+    </select>
+
+    <update id="markFailed">
+        UPDATE interview_report
+        SET status = 'REPORT_FAILED',
+            failure_reason = #{failureReason},
+            retry_count = retry_count + 1,
+            updated_at = #{updatedAt}
+        WHERE session_id = #{sessionId} AND status IN ('REPORT_PENDING', 'REPORT_READY')
+    </update>
+
+    <update id="markPending">
+        UPDATE interview_report
+        SET status = 'REPORT_PENDING',
+            failure_reason = NULL,
+            updated_at = #{updatedAt}
+        WHERE session_id = #{sessionId} AND status = 'REPORT_FAILED'
+    </update>
+
+    <update id="markReady">
+        UPDATE interview_report
+        SET status = 'REPORT_READY',
+            total_score = #{totalScore},
+            dimension_scores_json = #{dimensionScoresJson},
+            hiring_recommendation = #{hiringRecommendation},
+            strengths_json = #{strengthsJson},
+            weaknesses_json = #{weaknessesJson},
+            follow_up_findings_json = #{followUpFindingsJson},
+            project_mastery_json = #{projectMasteryJson},
+            knowledge_gaps_json = #{knowledgeGapsJson},
+            study_suggestions_json = #{studySuggestionsJson},
+            failure_reason = NULL,
+            generated_at = #{generatedAt},
+            updated_at = #{updatedAt}
+        WHERE session_id = #{sessionId} AND status IN ('REPORT_PENDING', 'REPORT_FAILED')
+    </update>
+</mapper>

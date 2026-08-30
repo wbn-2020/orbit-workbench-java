@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.jobapplication.infrastructure.mapper.ApplicationEventMapper">
+    <resultMap id="ApplicationEventMap" type="com.orbitworkbench.jobapplication.domain.ApplicationEventRecord">
+        <id property="id" column="id"/>
+        <result property="applicationId" column="application_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="eventType" column="event_type"/>
+        <result property="fromStage" column="from_stage"/>
+        <result property="toStage" column="to_stage"/>
+        <result property="detail" column="detail"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.orbitworkbench.jobapplication.domain.ApplicationEventRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_application_event(
+            application_id, user_id, event_type, from_stage, to_stage, detail, created_at
+        )
+        VALUES(
+            #{applicationId}, #{userId}, #{eventType}, #{fromStage}, #{toStage}, #{detail}, #{createdAt}
+        )
+    </insert>
+
+    <select id="listByApplication" resultMap="ApplicationEventMap">
+        SELECT id, application_id, user_id, event_type, from_stage, to_stage, detail, created_at
+        FROM job_application_event
+        WHERE application_id = #{applicationId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+</mapper>

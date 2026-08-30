@@ -1,11 +1,7 @@
 package com.orbitworkbench;
 
-import com.orbitworkbench.shared.config.AgentRuntimeProperties;
 import com.orbitworkbench.shared.config.CryptoProperties;
-import com.orbitworkbench.shared.config.DatasetProperties;
-import com.orbitworkbench.shared.config.McpProperties;
 import com.orbitworkbench.shared.config.StorageProperties;
-import com.orbitworkbench.shared.config.ToolRuntimeProperties;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -15,31 +11,19 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableAsync
 @MapperScan({
         "com.orbitworkbench.aiconnection.infrastructure.mapper",
-        "com.orbitworkbench.agent.infrastructure.mapper",
-        "com.orbitworkbench.artifact.infrastructure.mapper",
-        "com.orbitworkbench.artifactexport.infrastructure.mapper",
-        "com.orbitworkbench.content.infrastructure.mapper",
-        "com.orbitworkbench.document.infrastructure.mapper",
-        "com.orbitworkbench.dataset.infrastructure.mapper",
-        "com.orbitworkbench.analysis.infrastructure.mapper",
         "com.orbitworkbench.identity.infrastructure.mapper",
-        "com.orbitworkbench.mcp.infrastructure.mapper",
-        "com.orbitworkbench.memory.infrastructure.mapper",
-        "com.orbitworkbench.search.infrastructure.mapper",
-        "com.orbitworkbench.skill.infrastructure.mapper",
-        "com.orbitworkbench.statistics.infrastructure.mapper",
-        "com.orbitworkbench.task.infrastructure.mapper",
-        "com.orbitworkbench.tool.infrastructure.mapper",
-        "com.orbitworkbench.workflow.infrastructure.mapper",
+        "com.orbitworkbench.interview.infrastructure.mapper",
+        "com.orbitworkbench.interviewer.infrastructure.mapper",
+        "com.orbitworkbench.jobapplication.infrastructure.mapper",
+        "com.orbitworkbench.jobprofile.infrastructure.mapper",
+        "com.orbitworkbench.knowledge.infrastructure.mapper",
+        "com.orbitworkbench.project.infrastructure.mapper",
+        "com.orbitworkbench.studyplan.infrastructure.mapper",
         "com.orbitworkbench.workspace.infrastructure.mapper"
 })
 @EnableConfigurationProperties({
-        AgentRuntimeProperties.class,
         CryptoProperties.class,
-        DatasetProperties.class,
-        McpProperties.class,
-        StorageProperties.class,
-        ToolRuntimeProperties.class
+        StorageProperties.class
 })
 @SpringBootApplication
 public class OrbitWorkbenchApplication {

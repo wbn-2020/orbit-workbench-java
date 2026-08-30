@@ -1,0 +1,205 @@
+package com.orbitworkbench.knowledge.application;
+
+import com.orbitworkbench.ai.application.AiInvocation;
+import com.orbitworkbench.ai.application.ModelGateway;
+import com.orbitworkbench.aiconnection.api.AiConnectionDtos.ConnectionResponse;
+import com.orbitworkbench.aiconnection.application.AiConnectionService;
+import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
+import com.orbitworkbench.knowledge.api.KnowledgeDtos.AskResponse;
+import com.orbitworkbench.knowledge.api.KnowledgeDtos.BuildResultResponse;
+import com.orbitworkbench.knowledge.api.KnowledgeDtos.SourceItem;
+import com.orbitworkbench.knowledge.domain.KnowledgeChunkRecord;
+import com.orbitworkbench.knowledge.infrastructure.mapper.KnowledgeChunkMapper;
+import com.orbitworkbench.project.domain.ProjectFileRecord;
+import com.orbitworkbench.project.domain.ProjectRecord;
+import com.orbitworkbench.project.domain.ProjectVersionRecord;
+import com.orbitworkbench.project.infrastructure.mapper.ProjectMapper;
+import com.orbitworkbench.shared.api.ApiException;
+import com.orbitworkbench.shared.api.ErrorCode;
+import com.orbitworkbench.shared.api.PageResult;
+import com.orbitworkbench.storage.application.LocalStorageService;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 知识块构建与检索问答（RAG 第一版：MySQL ngram 全文检索 + AI 带来源回答）。
+ * 切分为确定性文本处理（1200 字窗口、150 字重叠），重建幂等（先删该版本旧块）。
+ * 问答先检索资料块，检索不到直接返回“资料不足”，不编造答案。
+ */
+@Service
+public class KnowledgeService {
+
+    private static final int CHUNK_WINDOW = 1200;
+    private static final int CHUNK_OVERLAP = 150;
+    private static final int MAX_FILE_CHARS = 60000;
+    private static final int MAX_CHUNK_FILES = 200;
+    private static final int SEARCH_LIMIT = 6;
+    private static final int ANSWER_MAX_TOKENS = 2048;
+    private static final Duration ANSWER_TIMEOUT = Duration.ofSeconds(120);
+    private static final int SOURCE_SNIPPET = 300;
+
+    private final ProjectMapper projectMapper;
+    private final KnowledgeChunkMapper chunkMapper;
+    private final LocalStorageService storageService;
+    private final AiConnectionService aiConnectionService;
+    private final ModelGateway modelGateway;
+
+    public KnowledgeService(ProjectMapper projectMapper,
+                            KnowledgeChunkMapper chunkMapper,
+                            LocalStorageService storageService,
+                            AiConnectionService aiConnectionService,
+                            ModelGateway modelGateway) {
+        this.projectMapper = projectMapper;
+        this.chunkMapper = chunkMapper;
+        this.storageService = storageService;
+        this.aiConnectionService = aiConnectionService;
+        this.modelGateway = modelGateway;
+    }
+
+    @Transactional
+    public BuildResultResponse build(Long userId, Long projectId, Long versionId) {
+        requireVersion(userId, projectId, versionId);
+        List<ProjectFileRecord> files = projectMapper.findFiles(versionId).stream()
+                .filter(file -> "PARSED".equals(file.getStatus()))
+                .filter(file -> file.getStorageRef() != null && !file.getStorageRef().isBlank())
+                .limit(MAX_CHUNK_FILES)
+                .toList();
+
+        chunkMapper.deleteByVersion(userId, versionId);
+        Instant now = Instant.now();
+        int chunkCount = 0;
+        int fileCount = 0;
+        for (ProjectFileRecord file : files) {
+            String text;
+            try {
+                text = storageService.readUtf8(file.getStorageRef());
+            } catch (RuntimeException exception) {
+                continue;
+            }
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            if (text.length() > MAX_FILE_CHARS) {
+                text = text.substring(0, MAX_FILE_CHARS);
+            }
+            for (String piece : split(text)) {
+                KnowledgeChunkRecord chunk = new KnowledgeChunkRecord();
+                chunk.setUserId(userId);
+                chunk.setProjectVersionId(versionId);
+                chunk.setProjectFileId(file.getId());
+                chunk.setRelativePath(file.getRelativePath());
+                chunk.setChunkNo(chunkCount + 1);
+                chunk.setContent(piece);
+                chunk.setCreatedAt(now);
+                chunkMapper.insert(chunk);
+                chunkCount += 1;
+            }
+            fileCount += 1;
+        }
+        return new BuildResultResponse(chunkCount, fileCount);
+    }
+
+    public AskResponse ask(Long userId, String question, Long projectVersionId) {
+        String keyword = question.trim();
+        List<KnowledgeChunkRecord> chunks = searchSafely(userId, projectVersionId, keyword);
+        if (chunks.isEmpty()) {
+            return AskResponse.empty();
+        }
+
+        List<SourceItem> sources = new ArrayList<>();
+        StringBuilder context = new StringBuilder();
+        for (int i = 0; i < chunks.size(); i += 1) {
+            KnowledgeChunkRecord chunk = chunks.get(i);
+            String snippet = snippet(chunk.getContent(), SOURCE_SNIPPET);
+            sources.add(new SourceItem(chunk.getRelativePath(), chunk.getChunkNo(), snippet));
+            context.append('[').append(i + 1).append("] ").append(chunk.getRelativePath())
+                    .append(" 第").append(chunk.getChunkNo()).append("段\n")
+                    .append(snippet(chunk.getContent(), 1200)).append("\n\n");
+        }
+
+        String answer = callModel(connectionFor(userId), context.toString(), keyword);
+        return new AskResponse(answer, false, sources);
+    }
+
+    public List<KnowledgeChunkRecord> searchSafely(Long userId, Long projectVersionId, String keyword) {
+        List<KnowledgeChunkRecord> chunks =
+                chunkMapper.search(userId, projectVersionId, keyword, SEARCH_LIMIT);
+        if (chunks.isEmpty()) {
+            chunks = chunkMapper.searchFallbackLike(userId, projectVersionId, keyword, SEARCH_LIMIT);
+        }
+        return chunks;
+    }
+
+    private AiConnectionRuntimeConfig connectionFor(Long userId) {
+        PageResult<ConnectionResponse> page = aiConnectionService.list(true, 1, 1);
+        if (page.items().isEmpty()) {
+            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
+                    "未配置可用的 AI 账户，请先在 AI 账户中添加并启用");
+        }
+        return aiConnectionService.getRuntimeConfig(page.items().get(0).id());
+    }
+
+    private String callModel(AiConnectionRuntimeConfig connection, String context, String question) {
+        String system = """
+                你是求职者的项目资料助手。只依据给定资料回答问题；回答中引用资料时标注编号（如 [1]）。
+                如果资料不足以回答，请第一句明确写“资料中未找到足够依据”，再给出与问题相关的通用建议。
+                用简洁的中文回答。""";
+        String user = "资料：\n" + context + "\n问题：" + question;
+        AiInvocation invocation = new AiInvocation(
+                connection, system, user, null, null, true, ANSWER_MAX_TOKENS);
+        StringBuilder text = new StringBuilder();
+        try {
+            modelGateway.stream(invocation)
+                    .doOnNext(event -> {
+                        if (event.text() != null) {
+                            text.append(event.text());
+                        }
+                    })
+                    .blockLast(ANSWER_TIMEOUT);
+        } catch (RuntimeException exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.UPSTREAM_UNAVAILABLE,
+                    "问答模型调用未完成：" + exception.getClass().getSimpleName());
+        }
+        if (text.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.INVALID_STRUCTURED_OUTPUT,
+                    "模型未返回任何内容");
+        }
+        return text.toString().trim();
+    }
+
+    private List<String> split(String text) {
+        List<String> pieces = new ArrayList<>();
+        int start = 0;
+        while (start < text.length()) {
+            int end = Math.min(text.length(), start + CHUNK_WINDOW);
+            pieces.add(text.substring(start, end));
+            if (end >= text.length()) {
+                break;
+            }
+            start = end - CHUNK_OVERLAP;
+        }
+        return pieces;
+    }
+
+    private String snippet(String value, int limit) {
+        String flat = value == null ? "" : value.replaceAll("\\s+", " ").trim();
+        return flat.length() <= limit ? flat : flat.substring(0, limit) + "…";
+    }
+
+    private void requireVersion(Long userId, Long projectId, Long versionId) {
+        ProjectRecord project = projectMapper.findProjectByIdAndUserId(projectId, userId);
+        if (project == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND, "项目不存在");
+        }
+        boolean found = projectMapper.findVersions(projectId).stream()
+                .anyMatch(version -> version.getId().equals(versionId));
+        if (!found) {
+            throw new ApiException(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND, "项目版本不存在");
+        }
+    }
+}

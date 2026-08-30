@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.studyplan.infrastructure.mapper.StudyTaskMapper">
+    <resultMap id="StudyTaskMap" type="com.orbitworkbench.studyplan.domain.StudyTaskRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="sourceId" column="source_id"/>
+        <result property="title" column="title"/>
+        <result property="topic" column="topic"/>
+        <result property="taskType" column="task_type"/>
+        <result property="priority" column="priority"/>
+        <result property="estimatedMinutes" column="estimated_minutes"/>
+        <result property="dueDate" column="due_date"/>
+        <result property="status" column="status"/>
+        <result property="manual" column="manual"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, source_type, source_id, title, topic, task_type, priority,
+        estimated_minutes, due_date, status, manual, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.studyplan.domain.StudyTaskRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO study_task(
+            user_id, source_type, source_id, title, topic, task_type, priority,
+            estimated_minutes, due_date, status, manual, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{sourceType}, #{sourceId}, #{title}, #{topic}, #{taskType}, #{priority},
+            #{estimatedMinutes}, #{dueDate}, #{status}, #{manual}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findById" resultMap="StudyTaskMap">
+        SELECT <include refid="allColumns"/>
+        FROM study_task
+        WHERE id = #{id}
+    </select>
+
+    <select id="listByUser" resultMap="StudyTaskMap">
+        SELECT <include refid="allColumns"/>
+        FROM study_task
+        WHERE user_id = #{userId}
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY
+            CASE status
+                WHEN 'IN_PROGRESS' THEN 0
+                WHEN 'PLANNED' THEN 1
+                WHEN 'POSTPONED' THEN 2
+                WHEN 'COMPLETED' THEN 3
+                WHEN 'SKIPPED' THEN 4
+                ELSE 5
+            END,
+            due_date ASC,
+            id ASC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE study_task
+        SET status = #{status},
+            due_date = COALESCE(#{dueDate}, due_date),
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = #{expectedStatus}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM study_task
+        WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+
+    <select id="countBySourceTitle" resultType="int">
+        SELECT COUNT(*) FROM study_task
+        WHERE user_id = #{userId}
+          AND source_type = #{sourceType}
+          AND source_id = #{sourceId}
+          AND title = #{title}
+    </select>
+</mapper>

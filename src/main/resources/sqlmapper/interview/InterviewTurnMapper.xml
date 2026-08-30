@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.interview.infrastructure.mapper.InterviewTurnMapper">
+    <resultMap id="InterviewTurnMap" type="com.orbitworkbench.interview.domain.InterviewTurnRecord">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="turnNo" column="turn_no"/>
+        <result property="turnType" column="turn_type"/>
+        <result property="question" column="question"/>
+        <result property="answer" column="answer"/>
+        <result property="answerSource" column="answer_source"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="answeredAt" column="answered_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, session_id, turn_no, turn_type, question, answer, answer_source, created_at, answered_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.interview.domain.InterviewTurnRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_turn(
+            session_id, turn_no, turn_type, question, answer, answer_source, created_at, answered_at
+        )
+        VALUES(
+            #{sessionId}, #{turnNo}, #{turnType}, #{question}, #{answer}, #{answerSource},
+            #{createdAt}, #{answeredAt}
+        )
+    </insert>
+
+    <select id="findById" resultMap="InterviewTurnMap">
+        SELECT <include refid="allColumns"/>
+        FROM interview_turn
+        WHERE id = #{id}
+    </select>
+
+    <select id="listBySession" resultMap="InterviewTurnMap">
+        SELECT <include refid="allColumns"/>
+        FROM interview_turn
+        WHERE session_id = #{sessionId}
+        ORDER BY turn_no ASC
+    </select>
+
+    <select id="countBySession" resultType="int">
+        SELECT COUNT(*) FROM interview_turn WHERE session_id = #{sessionId}
+    </select>
+
+    <select id="countBySessionAndType" resultType="int">
+        SELECT COUNT(*) FROM interview_turn
+        WHERE session_id = #{sessionId} AND turn_type = #{turnType}
+    </select>
+
+    <update id="submitAnswer">
+        UPDATE interview_turn
+        SET answer = #{answer},
+            answer_source = #{answerSource},
+            answered_at = #{answeredAt}
+        WHERE id = #{id} AND answer IS NULL
+    </update>
+</mapper>

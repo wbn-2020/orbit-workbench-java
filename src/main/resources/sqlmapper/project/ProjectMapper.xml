@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.project.infrastructure.mapper.ProjectMapper">
+    <resultMap id="ProjectMap" type="com.orbitworkbench.project.domain.ProjectRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="workspaceId" column="workspace_id"/>
+        <result property="name" column="name"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="ProjectVersionMap" type="com.orbitworkbench.project.domain.ProjectVersionRecord">
+        <id property="id" column="id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="versionNumber" column="version_number"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="sourceFileName" column="source_file_name"/>
+        <result property="sourceStorageRef" column="source_storage_ref"/>
+        <result property="sourceContentHash" column="source_content_hash"/>
+        <result property="status" column="status"/>
+        <result property="knowledgeBuildStatus" column="knowledge_build_status"/>
+        <result property="knowledgeChunkCount" column="knowledge_chunk_count"/>
+        <result property="knowledgeBuildAttempts" column="knowledge_build_attempts"/>
+        <result property="knowledgeBuildError" column="knowledge_build_error"/>
+        <result property="knowledgeBuiltAt" column="knowledge_built_at"/>
+        <result property="totalFileCount" column="total_file_count"/>
+        <result property="parsedFileCount" column="parsed_file_count"/>
+        <result property="excludedFileCount" column="excluded_file_count"/>
+        <result property="failedFileCount" column="failed_file_count"/>
+        <result property="totalSizeBytes" column="total_size_bytes"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="ProjectFileMap" type="com.orbitworkbench.project.domain.ProjectFileRecord">
+        <id property="id" column="id"/>
+        <result property="projectVersionId" column="project_version_id"/>
+        <result property="relativePath" column="relative_path"/>
+        <result property="relativePathHash" column="relative_path_hash"/>
+        <result property="mediaType" column="media_type"/>
+        <result property="sizeBytes" column="size_bytes"/>
+        <result property="storageRef" column="storage_ref"/>
+        <result property="contentHash" column="content_hash"/>
+        <result property="status" column="status"/>
+        <result property="statusReason" column="status_reason"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insertProject" parameterType="com.orbitworkbench.project.domain.ProjectRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project (user_id, workspace_id, name, status, created_at, updated_at)
+        VALUES (#{userId}, #{workspaceId}, #{name}, #{status}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="findProjectByIdAndUserId" resultMap="ProjectMap">
+        SELECT id, user_id, workspace_id, name, status, created_at, updated_at
+        FROM project
+        WHERE id = #{projectId} AND user_id = #{userId} AND status = 'ACTIVE'
+    </select>
+
+    <select id="findProjectByIdAndUserIdForUpdate" resultMap="ProjectMap">
+        SELECT id, user_id, workspace_id, name, status, created_at, updated_at
+        FROM project
+        WHERE id = #{projectId} AND user_id = #{userId} AND status = 'ACTIVE'
+        FOR UPDATE
+    </select>
+
+    <select id="findProjectsByUserId" resultMap="ProjectMap">
+        SELECT id, user_id, workspace_id, name, status, created_at, updated_at
+        FROM project
+        WHERE user_id = #{userId} AND status = 'ACTIVE'
+        ORDER BY updated_at DESC, id DESC
+    </select>
+
+    <update id="touchProject">
+        UPDATE project
+        SET updated_at = #{updatedAt}
+        WHERE id = #{projectId} AND status = 'ACTIVE'
+    </update>
+
+    <insert id="insertVersion" parameterType="com.orbitworkbench.project.domain.ProjectVersionRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project_version (
+            project_id, version_number, source_type, source_file_name, source_storage_ref,
+            source_content_hash, status, total_file_count, parsed_file_count, excluded_file_count,
+            failed_file_count, total_size_bytes, created_at, updated_at
+        ) VALUES (
+            #{projectId}, #{versionNumber}, #{sourceType}, #{sourceFileName}, #{sourceStorageRef},
+            #{sourceContentHash}, #{status}, #{totalFileCount}, #{parsedFileCount}, #{excludedFileCount},
+            #{failedFileCount}, #{totalSizeBytes}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="nextVersionNumber" resultType="int">
+        SELECT COALESCE(MAX(version_number), 0) + 1
+        FROM project_version
+        WHERE project_id = #{projectId}
+        FOR UPDATE
+    </select>
+
+    <select id="findLatestVersion" resultMap="ProjectVersionMap">
+        SELECT id, project_id, version_number, source_type, source_file_name, source_storage_ref,
+               source_content_hash, status, knowledge_build_status, knowledge_chunk_count,
+               knowledge_build_attempts, knowledge_build_error, knowledge_built_at,
+               total_file_count, parsed_file_count, excluded_file_count,
+               failed_file_count, total_size_bytes, created_at, updated_at
+        FROM project_version
+        WHERE project_id = #{projectId}
+        ORDER BY version_number DESC
+        LIMIT 1
+    </select>
+
+    <select id="findVersions" resultMap="ProjectVersionMap">
+        SELECT id, project_id, version_number, source_type, source_file_name, source_storage_ref,
+               source_content_hash, status, knowledge_build_status, knowledge_chunk_count,
+               knowledge_build_attempts, knowledge_build_error, knowledge_built_at,
+               total_file_count, parsed_file_count, excluded_file_count,
+               failed_file_count, total_size_bytes, created_at, updated_at
+        FROM project_version
+        WHERE project_id = #{projectId}
+        ORDER BY version_number DESC
+    </select>
+
+    <select id="findVersionById" resultMap="ProjectVersionMap">
+        SELECT id, project_id, version_number, source_type, source_file_name, source_storage_ref,
+               source_content_hash, status, knowledge_build_status, knowledge_chunk_count,
+               knowledge_build_attempts, knowledge_build_error, knowledge_built_at,
+               total_file_count, parsed_file_count, excluded_file_count,
+               failed_file_count, total_size_bytes, created_at, updated_at
+        FROM project_version
+        WHERE id = #{versionId}
+    </select>
+
+    <update id="tryMarkKnowledgeBuilding">
+        UPDATE project_version
+        SET knowledge_build_status = 'BUILDING',
+            knowledge_build_attempts = knowledge_build_attempts + 1,
+            knowledge_build_error = NULL,
+            updated_at = #{updatedAt}
+        WHERE id = #{versionId}
+          AND knowledge_build_status IN
+        <foreach item="fromStatus" collection="fromStatuses" open="(" separator="," close=")">
+            #{fromStatus}
+        </foreach>
+    </update>
+
+    <update id="markKnowledgeReady">
+        UPDATE project_version
+        SET knowledge_build_status = 'READY',
+            knowledge_chunk_count = #{chunkCount},
+            knowledge_build_error = NULL,
+            knowledge_built_at = #{builtAt},
+            updated_at = #{updatedAt}
+        WHERE id = #{versionId}
+    </update>
+
+    <update id="markKnowledgeFailed">
+        UPDATE project_version
+        SET knowledge_build_status = 'FAILED',
+            knowledge_build_error = #{error},
+            updated_at = #{updatedAt}
+        WHERE id = #{versionId}
+    </update>
+
+    <insert id="insertFile" parameterType="com.orbitworkbench.project.domain.ProjectFileRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project_file (
+            project_version_id, relative_path, relative_path_hash, media_type, size_bytes, storage_ref,
+            content_hash, status, status_reason, created_at
+        ) VALUES (
+            #{projectVersionId}, #{relativePath}, #{relativePathHash}, #{mediaType}, #{sizeBytes}, #{storageRef},
+            #{contentHash}, #{status}, #{statusReason}, #{createdAt}
+        )
+    </insert>
+
+    <select id="findFiles" resultMap="ProjectFileMap">
+        SELECT id, project_version_id, relative_path, relative_path_hash, media_type, size_bytes, storage_ref,
+               content_hash, status, status_reason, created_at
+        FROM project_file
+        WHERE project_version_id = #{projectVersionId}
+        ORDER BY relative_path
+    </select>
+</mapper>

@@ -9,7 +9,6 @@ import com.orbitworkbench.identity.api.IdentityDtos.SetupStatusResponse;
 import com.orbitworkbench.identity.api.IdentityDtos.UserResponse;
 import com.orbitworkbench.identity.application.IdentityService;
 import com.orbitworkbench.identity.application.OrbitUserDetails;
-import com.orbitworkbench.agent.application.SseHub;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
@@ -41,18 +40,15 @@ public class IdentityController {
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository securityContextRepository;
     private final CsrfTokenRepository csrfTokenRepository;
-    private final SseHub sseHub;
 
     public IdentityController(IdentityService identityService,
                               AuthenticationManager authenticationManager,
                               SecurityContextRepository securityContextRepository,
-                              CsrfTokenRepository csrfTokenRepository,
-                              SseHub sseHub) {
+                              CsrfTokenRepository csrfTokenRepository) {
         this.identityService = identityService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
         this.csrfTokenRepository = csrfTokenRepository;
-        this.sseHub = sseHub;
     }
 
     @GetMapping("/setup/status")
@@ -113,7 +109,6 @@ public class IdentityController {
     public void logout(HttpServletRequest request, HttpServletResponse response,
                        Authentication authentication) {
         new SecurityContextLogoutHandler().logout(request, response, authentication);
-        sseHub.closeAll();
     }
 
     @PutMapping("/auth/password")
@@ -122,7 +117,6 @@ public class IdentityController {
                                        HttpServletRequest request) {
         Long userId = ((OrbitUserDetails) authentication.getPrincipal()).userId();
         identityService.changePassword(userId, passwordRequest);
-        sseHub.closeAll();
         if (request.getSession(false) != null) {
             request.getSession(false).invalidate();
         }

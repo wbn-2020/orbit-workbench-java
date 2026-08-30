@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.jobapplication.infrastructure.mapper.JobApplicationMapper">
+    <resultMap id="JobApplicationMap" type="com.orbitworkbench.jobapplication.domain.JobApplicationRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="company" column="company"/>
+        <result property="role" column="role"/>
+        <result property="jdSummary" column="jd_summary"/>
+        <result property="source" column="source"/>
+        <result property="applyDate" column="apply_date"/>
+        <result property="interviewDate" column="interview_date"/>
+        <result property="stage" column="stage"/>
+        <result property="result" column="result"/>
+        <result property="salaryNote" column="salary_note"/>
+        <result property="contact" column="contact"/>
+        <result property="note" column="note"/>
+        <result property="archived" column="archived"/>
+        <result property="stageChangedAt" column="stage_changed_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, company, role, jd_summary, source, apply_date, interview_date,
+        stage, result, salary_note, contact, note, archived, stage_changed_at,
+        created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.jobapplication.domain.JobApplicationRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_application(
+            user_id, company, role, jd_summary, source, apply_date, interview_date,
+            stage, result, salary_note, contact, note, archived, stage_changed_at,
+            created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{company}, #{role}, #{jdSummary}, #{source}, #{applyDate}, #{interviewDate},
+            #{stage}, #{result}, #{salaryNote}, #{contact}, #{note}, #{archived}, #{stageChangedAt},
+            #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findById" resultMap="JobApplicationMap">
+        SELECT <include refid="allColumns"/>
+        FROM job_application
+        WHERE id = #{id}
+    </select>
+
+    <select id="listByUser" resultMap="JobApplicationMap">
+        SELECT <include refid="allColumns"/>
+        FROM job_application
+        WHERE user_id = #{userId}
+        <if test="!includeArchived">
+            AND archived = 0
+        </if>
+        ORDER BY
+            CASE stage
+                WHEN 'OFFER' THEN 0
+                WHEN 'HR' THEN 1
+                WHEN 'INTERVIEWING' THEN 2
+                WHEN 'WRITTEN_TEST' THEN 3
+                WHEN 'APPLIED' THEN 4
+                WHEN 'WATCHING' THEN 5
+                ELSE 6
+            END,
+            updated_at DESC,
+            id DESC
+    </select>
+
+    <update id="updateEditable" parameterType="com.orbitworkbench.jobapplication.domain.JobApplicationRecord">
+        UPDATE job_application
+        SET company = #{company},
+            role = #{role},
+            jd_summary = #{jdSummary},
+            source = #{source},
+            apply_date = #{applyDate},
+            interview_date = #{interviewDate},
+            result = #{result},
+            salary_note = #{salaryNote},
+            contact = #{contact},
+            note = #{note},
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="updateStage">
+        UPDATE job_application
+        SET stage = #{stage},
+            stage_changed_at = #{stageChangedAt},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND stage = #{expectedStage}
+    </update>
+
+    <update id="updateArchived">
+        UPDATE job_application
+        SET archived = #{archived},
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND archived &lt;&gt; #{archived}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM job_application
+        WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+</mapper>

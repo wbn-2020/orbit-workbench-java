@@ -19,6 +19,9 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ProblemDetail> handleApiException(ApiException exception, HttpServletRequest request) {
         return response(exception.getStatus(), exception.getErrorCode(), exception.getMessage(), request, null);
@@ -60,6 +63,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ProblemDetail> handleUnexpected(Exception exception, HttpServletRequest request) {
+        log.error("未预期异常：{} {}", request.getMethod(), request.getRequestURI(), exception);
         return response(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.UNKNOWN_PROVIDER_ERROR,
                 "服务器处理请求失败", request, null);
     }

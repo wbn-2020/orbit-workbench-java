@@ -61,32 +61,3 @@ orbit:
     root: ${ORBIT_STORAGE_ROOT:C:/AI/orbit-workbench/.local/storage}
     max-document-bytes: ${ORBIT_MAX_DOCUMENT_BYTES:2097152}
     max-artifact-bytes: ${ORBIT_MAX_ARTIFACT_BYTES:2097152}
-  agent:
-    runtime:
-      max-output-characters: ${ORBIT_AGENT_MAX_OUTPUT_CHARACTERS:262144}
-      max-output-bytes: ${ORBIT_AGENT_MAX_OUTPUT_BYTES:1048576}
-      max-stream-events: ${ORBIT_AGENT_MAX_STREAM_EVENTS:10000}
-      max-run-duration: ${ORBIT_AGENT_MAX_RUN_DURATION:5m}
-      heartbeat-interval: ${ORBIT_AGENT_HEARTBEAT_INTERVAL:10s}
-  dataset:
-    max-file-bytes: ${ORBIT_DATASET_MAX_FILE_BYTES:20971520}
-    max-rows: ${ORBIT_DATASET_MAX_ROWS:100000}
-    max-columns: ${ORBIT_DATASET_MAX_COLUMNS:200}
-    max-sheets: ${ORBIT_DATASET_MAX_SHEETS:20}
-    max-preview-rows: ${ORBIT_DATASET_MAX_PREVIEW_ROWS:100}
-    max-cell-characters: ${ORBIT_DATASET_MAX_CELL_CHARACTERS:32768}
-    max-tool-result-bytes: ${ORBIT_DATASET_MAX_TOOL_RESULT_BYTES:262144}
-    parse-timeout: ${ORBIT_DATASET_PARSE_TIMEOUT:2m}
-  tool:
-    runtime:
-      max-steps: ${ORBIT_AGENT_MAX_STEPS:8}
-      max-tool-calls: ${ORBIT_AGENT_MAX_TOOL_CALLS:20}
-      max-arguments-bytes: ${ORBIT_TOOL_MAX_ARGUMENT_BYTES:32768}
-      max-result-bytes: ${ORBIT_TOOL_MAX_RESULT_BYTES:262144}
-      max-context-bytes: ${ORBIT_AGENT_MAX_CONTEXT_BYTES:1048576}
-      default-timeout: ${ORBIT_TOOL_DEFAULT_TIMEOUT:30s}
-  mcp:
-    protocol-version: ${ORBIT_MCP_PROTOCOL_VERSION:2025-06-18}
-    max-tools: ${ORBIT_MCP_MAX_TOOLS:100}
-    max-response-bytes: ${ORBIT_MCP_MAX_RESPONSE_BYTES:262144}
-    request-timeout: ${ORBIT_MCP_REQUEST_TIMEOUT:30s}

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.interview.infrastructure.mapper.InterviewSessionMapper">
+    <resultMap id="InterviewSessionMap" type="com.orbitworkbench.interview.domain.InterviewSessionRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="title" column="title"/>
+        <result property="topicMode" column="topic_mode"/>
+        <result property="form" column="form"/>
+        <result property="round" column="round"/>
+        <result property="interviewerId" column="interviewer_id"/>
+        <result property="interviewerNameSnapshot" column="interviewer_name_snapshot"/>
+        <result property="interviewerSnapshotJson" column="interviewer_snapshot_json"/>
+        <result property="projectBindingsJson" column="project_bindings_json"/>
+        <result property="aiConnectionIdSnapshot" column="ai_connection_id_snapshot"/>
+        <result property="aiModelSnapshot" column="ai_model_snapshot"/>
+        <result property="webSearchPolicy" column="web_search_policy"/>
+        <result property="targetRole" column="target_role"/>
+        <result property="targetExperienceBand" column="target_experience_band"/>
+        <result property="questionLimit" column="question_limit"/>
+        <result property="followUpLimit" column="follow_up_limit"/>
+        <result property="turnLimit" column="turn_limit"/>
+        <result property="durationLimitMinutes" column="duration_limit_minutes"/>
+        <result property="status" column="status"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="endedAt" column="ended_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, title, topic_mode, form, round,
+        interviewer_id, interviewer_name_snapshot, interviewer_snapshot_json,
+        project_bindings_json,
+        ai_connection_id_snapshot, ai_model_snapshot, web_search_policy,
+        target_role, target_experience_band,
+        question_limit, follow_up_limit, turn_limit, duration_limit_minutes,
+        status, started_at, ended_at, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.interview.domain.InterviewSessionRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_session(
+            user_id, title, topic_mode, form, round,
+            interviewer_id, interviewer_name_snapshot, interviewer_snapshot_json,
+            project_bindings_json,
+            ai_connection_id_snapshot, ai_model_snapshot, web_search_policy,
+            target_role, target_experience_band,
+            question_limit, follow_up_limit, turn_limit, duration_limit_minutes,
+            status, started_at, ended_at, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{title}, #{topicMode}, #{form}, #{round},
+            #{interviewerId}, #{interviewerNameSnapshot}, #{interviewerSnapshotJson},
+            #{projectBindingsJson},
+            #{aiConnectionIdSnapshot}, #{aiModelSnapshot}, #{webSearchPolicy},
+            #{targetRole}, #{targetExperienceBand},
+            #{questionLimit}, #{followUpLimit}, #{turnLimit}, #{durationLimitMinutes},
+            #{status}, #{startedAt}, #{endedAt}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="countByInterviewer" resultType="int">
+        SELECT COUNT(*)
+        FROM interview_session
+        WHERE interviewer_id = #{interviewerId}
+    </select>
+
+    <select id="findById" resultMap="InterviewSessionMap">
+        SELECT <include refid="allColumns"/>
+        FROM interview_session
+        WHERE id = #{id}
+    </select>
+
+    <select id="listByUser" resultMap="InterviewSessionMap">
+        SELECT <include refid="allColumns"/>
+        FROM interview_session
+        WHERE user_id = #{userId}
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY updated_at DESC, id DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE interview_session
+        SET status = #{status},
+            started_at = COALESCE(#{startedAt}, started_at),
+            ended_at = COALESCE(#{endedAt}, ended_at),
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND status = #{expectedStatus}
+    </update>
+</mapper>
