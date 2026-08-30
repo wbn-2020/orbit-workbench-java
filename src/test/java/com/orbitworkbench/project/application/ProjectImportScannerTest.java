@@ -53,6 +53,31 @@ class ProjectImportScannerTest {
         assertEquals("FAILED", result.files().getFirst().status());
     }
 
+    @Test
+    void zipRoutesDocumentThroughExtractorAndCorruptDocumentDoesNotAbortBatch() throws Exception {
+        byte[] corruptDocx = "this is definitely not an OOXML package".getBytes(StandardCharsets.UTF_8);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
+            zip.putNextEntry(new ZipEntry("README.md"));
+            zip.write("# Demo".getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("broken.docx"));
+            zip.write(corruptDocx);
+            zip.closeEntry();
+        }
+
+        var result = scanner.scan("mixed.zip", new ByteArrayInputStream(output.toByteArray()));
+
+        // 文档类型不再被允许列表排除；损坏文档单独记 FAILED，同批其他文件照常解析
+        assertEquals(2, result.files().size());
+        assertEquals(1, result.parsedCount());
+        assertEquals(1, result.failedCount());
+        assertEquals(0, result.excludedCount());
+        var broken = result.files().stream()
+                .filter(file -> file.relativePath().equals("broken.docx")).findFirst().orElseThrow();
+        assertEquals("FAILED", broken.status());
+    }
+
     private byte[] zip(Map<String, String> entries) throws Exception {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {

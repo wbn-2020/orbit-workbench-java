@@ -2,6 +2,7 @@ package com.orbitworkbench.project.application;
 
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -94,7 +95,7 @@ public class ProjectImportScanner {
                 if (parsedBytes > MAX_PARSED_BYTES) {
                     throw validation("压缩包可解析文本总量超过 20 MB");
                 }
-                files.add(validateUtf8(relativePath, content));
+                files.add(classifyEntry(relativePath, content));
             }
         } catch (ApiException exception) {
             throw exception;
@@ -110,23 +111,6 @@ public class ProjectImportScanner {
     }
 
     private ScanResult scanSingleFile(String fileName, InputStream input) {
-        // PDF/DOCX/PPTX/XLSX：提取文本后按文本文件入档（V-002 第一版）
-        if (textExtractor.supports(fileName)) {
-            try {
-                String text = textExtractor.extract(fileName, input);
-                if (text == null || text.isBlank()) {
-                    return new ScanResult("FILE", List.of(ScannedFile.failed(
-                            fileName, 0, textExtractor.mediaType(fileName),
-                            "文档中未提取到文本内容")));
-                }
-                return new ScanResult("FILE", List.of(ScannedFile.parsed(
-                        fileName, text.getBytes(StandardCharsets.UTF_8), "text/plain")));
-            } catch (IOException exception) {
-                return new ScanResult("FILE", List.of(ScannedFile.failed(
-                        fileName, 0, textExtractor.mediaType(fileName),
-                        "文档解析失败：文件损坏或格式不受支持")));
-            }
-        }
         String exclusionReason = exclusionReason(fileName);
         if (exclusionReason != null) {
             throw new ApiException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
@@ -134,12 +118,32 @@ public class ProjectImportScanner {
         }
         try {
             byte[] content = readLimited(input, MAX_ENTRY_BYTES);
-            return new ScanResult("FILE", List.of(validateUtf8(fileName, content)));
+            return new ScanResult("FILE", List.of(classifyEntry(fileName, content)));
         } catch (ApiException exception) {
             throw exception;
         } catch (IOException exception) {
             throw validation("无法读取上传文件");
         }
+    }
+
+    /** 文档类型走文本抽取（PDF/DOCX/PPTX/XLSX），其余按 UTF-8 文本校验。 */
+    private ScannedFile classifyEntry(String relativePath, byte[] content) {
+        if (textExtractor.supports(relativePath)) {
+            try {
+                String text = textExtractor.extract(relativePath, new ByteArrayInputStream(content));
+                if (text == null || text.isBlank()) {
+                    return ScannedFile.failed(relativePath, content.length,
+                            textExtractor.mediaType(relativePath), "文档中未提取到文本内容");
+                }
+                return ScannedFile.parsed(relativePath, text.getBytes(StandardCharsets.UTF_8),
+                        "text/plain");
+            } catch (IOException | RuntimeException exception) {
+                return ScannedFile.failed(relativePath, content.length,
+                        textExtractor.mediaType(relativePath),
+                        "文档解析失败：文件损坏或格式不受支持");
+            }
+        }
+        return validateUtf8(relativePath, content);
     }
 
     private ScannedFile validateUtf8(String relativePath, byte[] content) {
@@ -231,6 +235,7 @@ public class ProjectImportScanner {
     private boolean isSupported(String fileName, String extension) {
         return SUPPORTED_EXTENSIONS.contains(extension)
                 || SUPPORTED_FILE_NAMES.contains(fileName)
+                || textExtractor.supports(fileName)
                 || fileName.equals("readme")
                 || fileName.startsWith("readme.");
     }
