@@ -179,6 +179,39 @@ class InterviewQuestionServiceTest {
                 () -> service.next(7L, 21L, new NextQuestionRequest("MAIN", null)));
     }
 
+    @Test
+    void streamNextToleratesNullTextGatewayEvents() {
+        InterviewSessionRecord session = runningSession();
+        when(sessionMapper.findById(21L)).thenReturn(session);
+        when(turnMapper.countBySession(21L)).thenReturn(0);
+        when(turnMapper.listBySession(21L)).thenReturn(List.of());
+        // 真实网关会在文本增量之间夹带 text=null 的 start/finish 事件
+        when(modelGateway.stream(any(AiInvocation.class))).thenReturn(Flux.just(
+                new AiStreamEvent("start", null, null, null, null, false, null, null, null),
+                new AiStreamEvent("delta", "请说明", null, null, null, false, null, null, null),
+                new AiStreamEvent("delta", null, null, null, null, false, null, null, null),
+                new AiStreamEvent("delta", "线程池参数？", null, null, null, false, null, null, null),
+                new AiStreamEvent("finish", null, null, null, null, true, null, null, null)));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            invocation.<InterviewTurnRecord>getArgument(0).setId(140L);
+            return null;
+        }).when(turnMapper).insert(any(InterviewTurnRecord.class));
+
+        List<org.springframework.http.codec.ServerSentEvent<String>> events =
+                service.streamNext(7L, 21L, new NextQuestionRequest("MAIN", null))
+                        .collectList().block();
+
+        assertEquals(true, events != null && events.size() >= 3);
+        assertEquals("start", events.get(0).event());
+        assertEquals("done", events.get(events.size() - 1).event());
+        long deltas = events.stream().filter(e -> "delta".equals(e.event())).count();
+        assertEquals(2, deltas);
+        ArgumentCaptor<InterviewTurnRecord> captor =
+                ArgumentCaptor.forClass(InterviewTurnRecord.class);
+        verify(turnMapper).insert(captor.capture());
+        assertEquals("请说明线程池参数？", captor.getValue().getQuestion());
+    }
+
     private void stubModelOutput(String text) {
         when(modelGateway.stream(any(AiInvocation.class)))
                 .thenReturn(Flux.just(new AiStreamEvent(

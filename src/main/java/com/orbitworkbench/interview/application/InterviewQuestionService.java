@@ -20,7 +20,6 @@ import com.orbitworkbench.shared.api.ErrorCode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
@@ -110,8 +109,7 @@ public class InterviewQuestionService {
         Flux<ServerSentEvent<String>> body = modelGateway
                 .stream(new AiInvocation(connection, pair.system(), pair.user(), null, null, true,
                         MAX_OUTPUT_TOKENS))
-                .map(AiStreamEvent::text)
-                .filter(Objects::nonNull)
+                .mapNotNull(AiStreamEvent::text)
                 .map(text -> {
                     buffer.append(text);
                     return sse("delta", text);
