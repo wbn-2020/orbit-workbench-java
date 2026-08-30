@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.aiconnection.infrastructure.mapper.AiScenarioMapper">
+    <resultMap id="RouteMap" type="com.orbitworkbench.aiconnection.domain.ScenarioRouteRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="scenarioCode" column="scenario_code"/>
+        <result property="primaryConnectionId" column="primary_connection_id"/>
+        <result property="backupConnectionId" column="backup_connection_id"/>
+        <result property="failoverEnabled" column="failover_enabled"/>
+        <result property="version" column="version"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="primaryConnectionName" column="primary_connection_name"/>
+        <result property="backupConnectionName" column="backup_connection_name"/>
+    </resultMap>
+
+    <resultMap id="AuditMap" type="com.orbitworkbench.aiconnection.domain.CallAuditRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="scenarioCode" column="scenario_code"/>
+        <result property="primaryConnectionId" column="primary_connection_id"/>
+        <result property="usedConnectionId" column="used_connection_id"/>
+        <result property="backupAttempted" column="backup_attempted"/>
+        <result property="status" column="status"/>
+        <result property="errorCode" column="error_code"/>
+        <result property="latencyMs" column="latency_ms"/>
+        <result property="requestChars" column="request_chars"/>
+        <result property="responseChars" column="response_chars"/>
+        <result property="configurationSnapshotJson" column="configuration_snapshot_json"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="usedConnectionName" column="used_connection_name"/>
+    </resultMap>
+
+    <sql id="RouteColumns">
+        r.id, r.user_id, r.scenario_code, r.primary_connection_id, r.backup_connection_id,
+        r.failover_enabled, r.version, r.created_at, r.updated_at,
+        pc.name AS primary_connection_name, bc.name AS backup_connection_name
+    </sql>
+
+    <sql id="AuditColumns">
+        a.id, a.user_id, a.scenario_code, a.primary_connection_id, a.used_connection_id,
+        a.backup_attempted, a.status, a.error_code, a.latency_ms, a.request_chars,
+        a.response_chars, a.configuration_snapshot_json, a.created_at, a.finished_at,
+        c.name AS used_connection_name
+    </sql>
+
+    <select id="listRoutes" resultMap="RouteMap">
+        SELECT <include refid="RouteColumns"/>
+        FROM ai_scenario_route r
+        LEFT JOIN ai_connection pc ON pc.id = r.primary_connection_id
+        LEFT JOIN ai_connection bc ON bc.id = r.backup_connection_id
+        WHERE r.user_id = #{userId}
+        ORDER BY r.scenario_code ASC
+    </select>
+
+    <select id="findRoute" resultMap="RouteMap">
+        SELECT <include refid="RouteColumns"/>
+        FROM ai_scenario_route r
+        LEFT JOIN ai_connection pc ON pc.id = r.primary_connection_id
+        LEFT JOIN ai_connection bc ON bc.id = r.backup_connection_id
+        WHERE r.user_id = #{userId} AND r.scenario_code = #{scenarioCode}
+    </select>
+
+    <insert id="insertRoute" parameterType="com.orbitworkbench.aiconnection.domain.ScenarioRouteRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_scenario_route(
+            user_id, scenario_code, primary_connection_id, backup_connection_id,
+            failover_enabled, version, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{scenarioCode}, #{primaryConnectionId}, #{backupConnectionId},
+            #{failoverEnabled}, #{version}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <update id="updateRoute" parameterType="com.orbitworkbench.aiconnection.domain.ScenarioRouteRecord">
+        UPDATE ai_scenario_route
+        SET primary_connection_id = #{primaryConnectionId},
+            backup_connection_id = #{backupConnectionId},
+            failover_enabled = #{failoverEnabled},
+            version = version + 1,
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteRoute">
+        DELETE FROM ai_scenario_route
+        WHERE user_id = #{userId} AND scenario_code = #{scenarioCode}
+    </delete>
+
+    <insert id="insertAudit" parameterType="com.orbitworkbench.aiconnection.domain.CallAuditRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_call_audit(
+            user_id, scenario_code, primary_connection_id, used_connection_id,
+            backup_attempted, status, error_code, latency_ms, request_chars,
+            response_chars, configuration_snapshot_json, created_at, finished_at
+        )
+        VALUES(
+            #{userId}, #{scenarioCode}, #{primaryConnectionId}, #{usedConnectionId},
+            #{backupAttempted}, #{status}, #{errorCode}, #{latencyMs}, #{requestChars},
+            #{responseChars}, #{configurationSnapshotJson}, #{createdAt}, #{finishedAt}
+        )
+    </insert>
+
+    <update id="finishAudit">
+        UPDATE ai_call_audit
+        SET status = #{status},
+            error_code = #{errorCode},
+            latency_ms = #{latencyMs},
+            request_chars = #{requestChars},
+            response_chars = #{responseChars},
+            used_connection_id = #{usedConnectionId},
+            backup_attempted = #{backupAttempted},
+            finished_at = #{finishedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <select id="listAudits" resultMap="AuditMap">
+        SELECT <include refid="AuditColumns"/>
+        FROM ai_call_audit a
+        LEFT JOIN ai_connection c ON c.id = a.used_connection_id
+        WHERE a.user_id = #{userId}
+        <if test="scenarioCode != null">
+            AND a.scenario_code = #{scenarioCode}
+        </if>
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countAudits" resultType="long">
+        SELECT COUNT(*)
+        FROM ai_call_audit a
+        WHERE a.user_id = #{userId}
+        <if test="scenarioCode != null">
+            AND a.scenario_code = #{scenarioCode}
+        </if>
+    </select>
+</mapper>

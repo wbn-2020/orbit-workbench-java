@@ -2,11 +2,8 @@ package com.orbitworkbench.interview.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.orbitworkbench.ai.application.AiInvocation;
-import com.orbitworkbench.ai.application.ModelGateway;
-import com.orbitworkbench.aiconnection.api.AiConnectionDtos.ConnectionResponse;
-import com.orbitworkbench.aiconnection.application.AiConnectionService;
-import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
+import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
+import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.interview.api.InterviewDtos.ReportResponse;
 import com.orbitworkbench.interview.api.InterviewDtos.ReportStateResponse;
 import com.orbitworkbench.interview.domain.InterviewReportRecord;
@@ -21,7 +18,6 @@ import com.orbitworkbench.notification.application.NotificationService;
 import com.orbitworkbench.notification.domain.NotificationEvent;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
-import com.orbitworkbench.shared.api.PageResult;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -35,7 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 面试评分报告生成。
  *
- * <p>通过 ModelGateway 调用用户配置的 AI 连接，对 REPORT_PENDING 的报告生成结构化评分；
+ * <p>通过 {@code INTERVIEW_REPORT} 场景解析账户并调用模型（含调用审计与备用切换），
+ * 对 REPORT_PENDING 的报告生成结构化评分；
  * 输出经 JSON 解析与字段校验后回写 REPORT_READY，并把会话从 COMPLETING 推进到 COMPLETED。
  * 模型调用阻塞且在事务外进行，写回为单条原子 UPDATE；任何失败落入 REPORT_FAILED 并递增
  * retry_count，failure_reason 只保存错误摘要，不包含凭据与模型原文。</p>
@@ -72,23 +69,20 @@ public class InterviewReportService {
     private final InterviewSessionMapper sessionMapper;
     private final InterviewTurnMapper turnMapper;
     private final InterviewReportMapper reportMapper;
-    private final AiConnectionService connectionService;
-    private final ModelGateway modelGateway;
+    private final AiScenarioExecutionService aiScenarioExecution;
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
 
     public InterviewReportService(InterviewSessionMapper sessionMapper,
                                   InterviewTurnMapper turnMapper,
                                   InterviewReportMapper reportMapper,
-                                  AiConnectionService connectionService,
-                                  ModelGateway modelGateway,
+                                  AiScenarioExecutionService aiScenarioExecution,
                                   ObjectMapper objectMapper,
                                   NotificationService notificationService) {
         this.sessionMapper = sessionMapper;
         this.turnMapper = turnMapper;
         this.reportMapper = reportMapper;
-        this.connectionService = connectionService;
-        this.modelGateway = modelGateway;
+        this.aiScenarioExecution = aiScenarioExecution;
         this.objectMapper = objectMapper;
         this.notificationService = notificationService;
     }
@@ -97,12 +91,12 @@ public class InterviewReportService {
         InterviewSessionRecord session = ownedSession(userId, sessionId);
         requireGeneratableReport(session.getId());
 
-        AiConnectionRuntimeConfig connection = resolveConnection(connectionId);
         String userPrompt = buildUserPrompt(session, turnMapper.listBySession(session.getId()));
 
         String modelOutput;
         try {
-            modelOutput = callModel(connection, userPrompt);
+            modelOutput = aiScenarioExecution.executeText(AiScenario.INTERVIEW_REPORT, userId,
+                    connectionId, SYSTEM_PROMPT, userPrompt, MAX_OUTPUT_TOKENS, MODEL_TIMEOUT);
             persistScoredReport(session, parseScoredReport(modelOutput));
         } catch (ApiException exception) {
             reportMapper.markFailed(session.getId(), exception.getMessage(), Instant.now());
@@ -195,40 +189,6 @@ public class InterviewReportService {
                 session.getId(),
                 "/interviews/" + session.getId() + "/report",
                 "INTERVIEW_REPORT_READY:" + session.getId());
-    }
-
-    private AiConnectionRuntimeConfig resolveConnection(Long connectionId) {
-        if (connectionId != null) {
-            return connectionService.getRuntimeConfig(connectionId);
-        }
-        PageResult<ConnectionResponse> page = connectionService.list(true, 1, 1);
-        if (page.items().isEmpty()) {
-            throw conflict("未配置可用的 AI 账户，请先在 AI 账户中添加并启用");
-        }
-        return connectionService.getRuntimeConfig(page.items().get(0).id());
-    }
-
-    private String callModel(AiConnectionRuntimeConfig connection, String userPrompt) {
-        AiInvocation invocation = new AiInvocation(
-                connection, SYSTEM_PROMPT, userPrompt, null, null, true, MAX_OUTPUT_TOKENS);
-        StringBuilder text = new StringBuilder();
-        try {
-            modelGateway.stream(invocation)
-                    .doOnNext(event -> {
-                        if (event.text() != null) {
-                            text.append(event.text());
-                        }
-                    })
-                    .blockLast(MODEL_TIMEOUT);
-        } catch (RuntimeException exception) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.UPSTREAM_UNAVAILABLE,
-                    "模型调用未完成：" + exception.getClass().getSimpleName());
-        }
-        if (text.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.INVALID_STRUCTURED_OUTPUT,
-                    "模型未返回任何内容");
-        }
-        return text.toString();
     }
 
     ScoredReport parseScoredReport(String modelOutput) {

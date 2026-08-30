@@ -2,11 +2,8 @@ package com.orbitworkbench.knowledge.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.orbitworkbench.ai.application.AiInvocation;
-import com.orbitworkbench.ai.application.ModelGateway;
-import com.orbitworkbench.aiconnection.api.AiConnectionDtos.ConnectionResponse;
-import com.orbitworkbench.aiconnection.application.AiConnectionService;
-import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
+import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
+import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.ConfirmFactRequest;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.FactResponse;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.FactsListResponse;
@@ -19,7 +16,6 @@ import com.orbitworkbench.project.domain.ProjectRecord;
 import com.orbitworkbench.project.infrastructure.mapper.ProjectMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
-import com.orbitworkbench.shared.api.PageResult;
 import com.orbitworkbench.storage.application.LocalStorageService;
 import java.time.Duration;
 import java.time.Instant;
@@ -56,35 +52,33 @@ public class ProjectFactService {
     private final ProjectMapper projectMapper;
     private final ProjectFactMapper factMapper;
     private final LocalStorageService storageService;
-    private final AiConnectionService aiConnectionService;
-    private final ModelGateway modelGateway;
+    private final AiScenarioExecutionService aiScenarioExecution;
     private final ObjectMapper objectMapper;
 
     public ProjectFactService(ProjectMapper projectMapper,
                               ProjectFactMapper factMapper,
                               LocalStorageService storageService,
-                              AiConnectionService aiConnectionService,
-                              ModelGateway modelGateway,
+                              AiScenarioExecutionService aiScenarioExecution,
                               ObjectMapper objectMapper) {
         this.projectMapper = projectMapper;
         this.factMapper = factMapper;
         this.storageService = storageService;
-        this.aiConnectionService = aiConnectionService;
-        this.modelGateway = modelGateway;
+        this.aiScenarioExecution = aiScenarioExecution;
         this.objectMapper = objectMapper;
     }
 
     @Transactional
     public FactsListResponse generate(Long userId, Long projectId, Long versionId, Long connectionId) {
         requireVersion(userId, projectId, versionId);
-        AiConnectionRuntimeConfig connection = resolveConnection(connectionId);
 
         String material = buildMaterial(userId, versionId);
         if (material.isBlank()) {
             throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
                     "该版本没有可分析的已解析文本文件");
         }
-        String output = callModel(connection, material);
+        String output = aiScenarioExecution.executeText(AiScenario.PROJECT_FACT, userId,
+                connectionId, SYSTEM_PROMPT, factUserPrompt(material), MAX_OUTPUT_TOKENS,
+                MODEL_TIMEOUT);
         List<ProjectFactRecord> facts = parseFacts(userId, versionId, output);
 
         factMapper.deleteAnalyzedByVersion(userId, versionId);
@@ -200,39 +194,8 @@ public class ProjectFactService {
         return new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.INVALID_STRUCTURED_OUTPUT, message);
     }
 
-    private AiConnectionRuntimeConfig resolveConnection(Long connectionId) {
-        if (connectionId != null) {
-            return aiConnectionService.getRuntimeConfig(connectionId);
-        }
-        PageResult<ConnectionResponse> page = aiConnectionService.list(true, 1, 1);
-        if (page.items().isEmpty()) {
-            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
-                    "未配置可用的 AI 账户，请先在 AI 账户中添加并启用");
-        }
-        return aiConnectionService.getRuntimeConfig(page.items().get(0).id());
-    }
-
-    private String callModel(AiConnectionRuntimeConfig connection, String material) {
-        String user = "项目文件片段：\n" + material + "\n请按约定输出画像事实 JSON 数组。";
-        AiInvocation invocation = new AiInvocation(
-                connection, SYSTEM_PROMPT, user, null, null, true, MAX_OUTPUT_TOKENS);
-        StringBuilder text = new StringBuilder();
-        try {
-            modelGateway.stream(invocation)
-                    .doOnNext(event -> {
-                        if (event.text() != null) {
-                            text.append(event.text());
-                        }
-                    })
-                    .blockLast(MODEL_TIMEOUT);
-        } catch (RuntimeException exception) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.UPSTREAM_UNAVAILABLE,
-                    "画像模型调用未完成：" + exception.getClass().getSimpleName());
-        }
-        if (text.isEmpty()) {
-            throw unstructured("模型未返回任何内容");
-        }
-        return text.toString();
+    private String factUserPrompt(String material) {
+        return "项目文件片段：\n" + material + "\n请按约定输出画像事实 JSON 数组。";
     }
 
     private void requireVersion(Long userId, Long projectId, Long versionId) {

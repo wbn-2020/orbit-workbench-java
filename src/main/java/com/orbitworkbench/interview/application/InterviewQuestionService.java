@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.ai.application.AiInvocation;
 import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.ai.application.ModelGateway;
-import com.orbitworkbench.aiconnection.application.AiConnectionService;
 import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
+import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
+import com.orbitworkbench.aiconnection.application.AiScenarioRouter;
+import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.interview.api.InterviewDtos.NextQuestionRequest;
 import com.orbitworkbench.interview.api.InterviewDtos.TurnResponse;
 import com.orbitworkbench.interview.domain.InterviewSessionRecord;
@@ -30,8 +32,9 @@ import reactor.core.publisher.Flux;
  *
  * <p>会话须处于 RUNNING；MAIN 消耗主问题与总问答预算，FOLLOW_UP 消耗追问与总问答预算，
  * 且要求最后一条问答已回答（追问必须针对已完成的回答）。题目由模型生成并持久化为
- * interview_turn；模型只输出题目本身，经长度校验后入库。支持 SSE 流式出题
- * （start -> delta* -> done/error），流式与阻塞两条路径共用预算与清洗规则。</p>
+ * interview_turn；模型只输出题目本身，经长度校验后入库。阻塞出题走
+ * {@code INTERVIEW_QUESTION} 场景（含调用审计与备用切换）；SSE 流式出题共用同一场景的
+ * 账户选择结果，但不做备用切换——流已开始下发后切换账户会造成题目拼接错乱。</p>
  */
 @Service
 public class InterviewQuestionService {
@@ -44,18 +47,21 @@ public class InterviewQuestionService {
 
     private final InterviewSessionMapper sessionMapper;
     private final InterviewTurnMapper turnMapper;
-    private final AiConnectionService aiConnectionService;
+    private final AiScenarioRouter aiScenarioRouter;
+    private final AiScenarioExecutionService aiScenarioExecution;
     private final ModelGateway modelGateway;
     private final ObjectMapper objectMapper;
 
     public InterviewQuestionService(InterviewSessionMapper sessionMapper,
                                     InterviewTurnMapper turnMapper,
-                                    AiConnectionService aiConnectionService,
+                                    AiScenarioRouter aiScenarioRouter,
+                                    AiScenarioExecutionService aiScenarioExecution,
                                     ModelGateway modelGateway,
                                     ObjectMapper objectMapper) {
         this.sessionMapper = sessionMapper;
         this.turnMapper = turnMapper;
-        this.aiConnectionService = aiConnectionService;
+        this.aiScenarioRouter = aiScenarioRouter;
+        this.aiScenarioExecution = aiScenarioExecution;
         this.modelGateway = modelGateway;
         this.objectMapper = objectMapper;
     }
@@ -69,10 +75,12 @@ public class InterviewQuestionService {
             requireLastAnswered(session.getId());
         }
 
-        AiConnectionRuntimeConfig connection = resolveConnection(session);
         PromptPair pair = buildPrompt(session, turnMapper.listBySession(session.getId()),
                 turnType, request.instruction());
-        String question = callModel(connection, pair.system(), pair.user());
+        String question = requireQuestion(aiScenarioExecution.executeText(
+                AiScenario.INTERVIEW_QUESTION, userId,
+                session.getAiConnectionIdSnapshot(), pair.system(), pair.user(),
+                MAX_OUTPUT_TOKENS, MODEL_TIMEOUT));
 
         Instant now = Instant.now();
         InterviewTurnRecord turn = new InterviewTurnRecord();
@@ -98,7 +106,9 @@ public class InterviewQuestionService {
         if (turnType == InterviewTurnType.FOLLOW_UP) {
             requireLastAnswered(session.getId());
         }
-        AiConnectionRuntimeConfig connection = resolveConnection(session);
+        AiConnectionRuntimeConfig connection = aiScenarioRouter
+                .resolve(userId, AiScenario.INTERVIEW_QUESTION, session.getAiConnectionIdSnapshot())
+                .primary();
         PromptPair pair = buildPrompt(session, turnMapper.listBySession(session.getId()),
                 turnType, request.instruction());
 
@@ -174,18 +184,6 @@ public class InterviewQuestionService {
             throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
                     "追问必须基于最后一条已回答的问题");
         }
-    }
-
-    private AiConnectionRuntimeConfig resolveConnection(InterviewSessionRecord session) {
-        if (session.getAiConnectionIdSnapshot() != null) {
-            return aiConnectionService.getRuntimeConfig(session.getAiConnectionIdSnapshot());
-        }
-        var page = aiConnectionService.list(true, 1, 1);
-        if (page.items().isEmpty()) {
-            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
-                    "未配置可用的 AI 账户，请先在 AI 账户中添加并启用");
-        }
-        return aiConnectionService.getRuntimeConfig(page.items().get(0).id());
     }
 
     private PromptPair buildPrompt(InterviewSessionRecord session, List<InterviewTurnRecord> turns,
@@ -314,23 +312,8 @@ public class InterviewQuestionService {
 
     private record PromptPair(String system, String user) {}
 
-    private String callModel(AiConnectionRuntimeConfig connection, String system, String prompt) {
-        AiInvocation invocation = new AiInvocation(
-                connection, system, prompt, null, null, true, MAX_OUTPUT_TOKENS);
-        StringBuilder text = new StringBuilder();
-        try {
-            modelGateway.stream(invocation)
-                    .doOnNext(event -> {
-                        if (event.text() != null) {
-                            text.append(event.text());
-                        }
-                    })
-                    .blockLast(MODEL_TIMEOUT);
-        } catch (RuntimeException exception) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.UPSTREAM_UNAVAILABLE,
-                    "出题模型调用未完成：" + exception.getClass().getSimpleName());
-        }
-        String question = cleanQuestion(text.toString());
+    private String requireQuestion(String rawOutput) {
+        String question = cleanQuestion(rawOutput);
         if (question.length() < QUESTION_MIN_LENGTH) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.INVALID_STRUCTURED_OUTPUT,
                     "模型未返回有效题目");

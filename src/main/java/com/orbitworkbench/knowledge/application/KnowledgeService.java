@@ -1,10 +1,7 @@
 package com.orbitworkbench.knowledge.application;
 
-import com.orbitworkbench.ai.application.AiInvocation;
-import com.orbitworkbench.ai.application.ModelGateway;
-import com.orbitworkbench.aiconnection.api.AiConnectionDtos.ConnectionResponse;
-import com.orbitworkbench.aiconnection.application.AiConnectionService;
-import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
+import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
+import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.AskResponse;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.BuildResultResponse;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.SourceItem;
@@ -16,7 +13,6 @@ import com.orbitworkbench.project.domain.ProjectVersionRecord;
 import com.orbitworkbench.project.infrastructure.mapper.ProjectMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
-import com.orbitworkbench.shared.api.PageResult;
 import com.orbitworkbench.storage.application.LocalStorageService;
 import java.time.Duration;
 import java.time.Instant;
@@ -42,23 +38,24 @@ public class KnowledgeService {
     private static final int ANSWER_MAX_TOKENS = 2048;
     private static final Duration ANSWER_TIMEOUT = Duration.ofSeconds(120);
     private static final int SOURCE_SNIPPET = 300;
+    private static final String ANSWER_SYSTEM_PROMPT = """
+            你是求职者的项目资料助手。只依据给定资料回答问题；回答中引用资料时标注编号（如 [1]）。
+            如果资料不足以回答，请第一句明确写“资料中未找到足够依据”，再给出与问题相关的通用建议。
+            用简洁的中文回答。""";
 
     private final ProjectMapper projectMapper;
     private final KnowledgeChunkMapper chunkMapper;
     private final LocalStorageService storageService;
-    private final AiConnectionService aiConnectionService;
-    private final ModelGateway modelGateway;
+    private final AiScenarioExecutionService aiScenarioExecution;
 
     public KnowledgeService(ProjectMapper projectMapper,
                             KnowledgeChunkMapper chunkMapper,
                             LocalStorageService storageService,
-                            AiConnectionService aiConnectionService,
-                            ModelGateway modelGateway) {
+                            AiScenarioExecutionService aiScenarioExecution) {
         this.projectMapper = projectMapper;
         this.chunkMapper = chunkMapper;
         this.storageService = storageService;
-        this.aiConnectionService = aiConnectionService;
-        this.modelGateway = modelGateway;
+        this.aiScenarioExecution = aiScenarioExecution;
     }
 
     @Transactional
@@ -122,7 +119,9 @@ public class KnowledgeService {
                     .append(snippet(chunk.getContent(), 1200)).append("\n\n");
         }
 
-        String answer = callModel(connectionFor(userId), context.toString(), keyword);
+        String answer = aiScenarioExecution.executeText(AiScenario.KNOWLEDGE_ANSWER, userId, null,
+                ANSWER_SYSTEM_PROMPT, "资料：\n" + context + "\n问题：" + keyword,
+                ANSWER_MAX_TOKENS, ANSWER_TIMEOUT).trim();
         return new AskResponse(answer, false, sources);
     }
 
@@ -133,43 +132,6 @@ public class KnowledgeService {
             chunks = chunkMapper.searchFallbackLike(userId, projectVersionId, keyword, SEARCH_LIMIT);
         }
         return chunks;
-    }
-
-    private AiConnectionRuntimeConfig connectionFor(Long userId) {
-        PageResult<ConnectionResponse> page = aiConnectionService.list(true, 1, 1);
-        if (page.items().isEmpty()) {
-            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
-                    "未配置可用的 AI 账户，请先在 AI 账户中添加并启用");
-        }
-        return aiConnectionService.getRuntimeConfig(page.items().get(0).id());
-    }
-
-    private String callModel(AiConnectionRuntimeConfig connection, String context, String question) {
-        String system = """
-                你是求职者的项目资料助手。只依据给定资料回答问题；回答中引用资料时标注编号（如 [1]）。
-                如果资料不足以回答，请第一句明确写“资料中未找到足够依据”，再给出与问题相关的通用建议。
-                用简洁的中文回答。""";
-        String user = "资料：\n" + context + "\n问题：" + question;
-        AiInvocation invocation = new AiInvocation(
-                connection, system, user, null, null, true, ANSWER_MAX_TOKENS);
-        StringBuilder text = new StringBuilder();
-        try {
-            modelGateway.stream(invocation)
-                    .doOnNext(event -> {
-                        if (event.text() != null) {
-                            text.append(event.text());
-                        }
-                    })
-                    .blockLast(ANSWER_TIMEOUT);
-        } catch (RuntimeException exception) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.UPSTREAM_UNAVAILABLE,
-                    "问答模型调用未完成：" + exception.getClass().getSimpleName());
-        }
-        if (text.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.INVALID_STRUCTURED_OUTPUT,
-                    "模型未返回任何内容");
-        }
-        return text.toString().trim();
     }
 
     private List<String> split(String text) {

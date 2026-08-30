@@ -3,6 +3,7 @@ package com.orbitworkbench.interview.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.isNull;
@@ -10,11 +11,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.orbitworkbench.ai.application.AiInvocation;
-import com.orbitworkbench.ai.application.AiStreamEvent;
-import com.orbitworkbench.ai.application.ModelGateway;
-import com.orbitworkbench.aiconnection.application.AiConnectionService;
-import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
+import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
+import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.interview.domain.InterviewReportRecord;
 import com.orbitworkbench.interview.domain.InterviewSessionRecord;
 import com.orbitworkbench.interview.domain.InterviewSessionStatus;
@@ -27,6 +25,7 @@ import com.orbitworkbench.interview.infrastructure.mapper.InterviewTurnMapper;
 import com.orbitworkbench.notification.application.NotificationService;
 import com.orbitworkbench.shared.api.ApiException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +36,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import reactor.core.publisher.Flux;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -66,10 +64,7 @@ class InterviewReportServiceTest {
     private InterviewReportMapper reportMapper;
 
     @Mock
-    private AiConnectionService connectionService;
-
-    @Mock
-    private ModelGateway modelGateway;
+    private AiScenarioExecutionService aiScenarioExecution;
 
     @Mock
     private NotificationService notificationService;
@@ -79,7 +74,7 @@ class InterviewReportServiceTest {
     @BeforeEach
     void setUp() {
         service = new InterviewReportService(sessionMapper, turnMapper, reportMapper,
-                connectionService, modelGateway, new ObjectMapper(), notificationService);
+                aiScenarioExecution, new ObjectMapper(), notificationService);
     }
 
     @Test
@@ -100,6 +95,8 @@ class InterviewReportServiceTest {
 
         assertEquals(ReportStatus.REPORT_READY.name(), response.report().status());
         assertEquals(84, response.report().totalScore());
+        verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_REPORT), eq(7L), eq(5L),
+                any(), any(), anyInt(), any(Duration.class));
         verify(reportMapper).markReady(eq(21L), eq(84), any(), eq("PASS"),
                 any(), any(), any(), any(), any(), any(), any(), any());
         verify(sessionMapper).updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
@@ -139,7 +136,8 @@ class InterviewReportServiceTest {
         when(reportMapper.findBySessionId(21L)).thenReturn(report(ReportStatus.REPORT_READY));
 
         assertThrows(ApiException.class, () -> service.generate(7L, 21L, 5L));
-        verify(modelGateway, never()).stream(any(AiInvocation.class));
+        verify(aiScenarioExecution, never()).executeText(any(), any(), any(), any(), any(),
+                anyInt(), any());
     }
 
     @Test
@@ -150,13 +148,6 @@ class InterviewReportServiceTest {
                 .thenReturn(report(ReportStatus.REPORT_FAILED))
                 .thenReturn(report(ReportStatus.REPORT_PENDING));
         when(reportMapper.markPending(eq(21L), any())).thenReturn(1);
-        when(connectionService.list(true, 1, 1)).thenReturn(new com.orbitworkbench.shared.api.PageResult<>(
-                java.util.List.of(new com.orbitworkbench.aiconnection.api.AiConnectionDtos.ConnectionResponse(
-                        5L, 1L, "主账户", "OPENAI_COMPATIBLE", "https://gw.example/v1",
-                        "/chat/completions", "CHAT_COMPLETIONS", "gpt-4o",
-                        "sk-****", true, 60000, "SUCCEEDED", 200, null, null, null,
-                        null, null)),
-                1, 1, 1));
         stubModelOutput(VALID_JSON);
         when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"),
                 any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
@@ -194,15 +185,11 @@ class InterviewReportServiceTest {
         turn.setAnswer("Redis 预扣 + 异步落库");
         turn.setAnswerSource(com.orbitworkbench.interview.domain.AnswerSource.INDEPENDENT);
         when(turnMapper.listBySession(21L)).thenReturn(List.of(turn));
-        when(connectionService.getRuntimeConfig(5L)).thenReturn(new AiConnectionRuntimeConfig(
-                5L, 9L, "主账户", "https://gw.example/v1", "/chat/completions",
-                "CHAT_COMPLETIONS", "gpt-4o", "sk-test", 60000));
     }
 
     private void stubModelOutput(String text) {
-        when(modelGateway.stream(any(AiInvocation.class)))
-                .thenReturn(Flux.just(new AiStreamEvent(
-                        "delta", text, null, null, null, false, null, null, null)));
+        when(aiScenarioExecution.executeText(any(), any(), any(), any(), any(), anyInt(),
+                any(Duration.class))).thenReturn(text);
     }
 
     private InterviewSessionRecord session(InterviewSessionStatus status) {

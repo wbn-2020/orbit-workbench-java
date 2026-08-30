@@ -3,6 +3,7 @@ package com.orbitworkbench.interview.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -11,8 +12,10 @@ import static org.mockito.Mockito.when;
 import com.orbitworkbench.ai.application.AiInvocation;
 import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.ai.application.ModelGateway;
-import com.orbitworkbench.aiconnection.application.AiConnectionService;
 import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
+import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
+import com.orbitworkbench.aiconnection.application.AiScenarioRouter;
+import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.interview.api.InterviewDtos.NextQuestionRequest;
 import com.orbitworkbench.interview.domain.InterviewSessionRecord;
 import com.orbitworkbench.interview.domain.InterviewSessionStatus;
@@ -21,6 +24,7 @@ import com.orbitworkbench.interview.domain.InterviewTurnType;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewSessionMapper;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewTurnMapper;
 import com.orbitworkbench.shared.api.ApiException;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +40,10 @@ import reactor.core.publisher.Flux;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class InterviewQuestionServiceTest {
 
+    private static final AiConnectionRuntimeConfig PRIMARY = new AiConnectionRuntimeConfig(
+            5L, 9L, "主账户", "https://gw.example/v1", "/chat/completions",
+            "CHAT_COMPLETIONS", "Deepseek-v4-flash", "sk-test", 60000);
+
     @Mock
     private InterviewSessionMapper sessionMapper;
 
@@ -43,7 +51,10 @@ class InterviewQuestionServiceTest {
     private InterviewTurnMapper turnMapper;
 
     @Mock
-    private AiConnectionService aiConnectionService;
+    private AiScenarioRouter aiScenarioRouter;
+
+    @Mock
+    private AiScenarioExecutionService aiScenarioExecution;
 
     @Mock
     private ModelGateway modelGateway;
@@ -52,12 +63,10 @@ class InterviewQuestionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new InterviewQuestionService(sessionMapper, turnMapper,
-                aiConnectionService, modelGateway,
-                new com.fasterxml.jackson.databind.ObjectMapper());
-        when(aiConnectionService.getRuntimeConfig(5L)).thenReturn(new AiConnectionRuntimeConfig(
-                5L, 9L, "主账户", "https://gw.example/v1", "/chat/completions",
-                "CHAT_COMPLETIONS", "Deepseek-v4-flash", "sk-test", 60000));
+        service = new InterviewQuestionService(sessionMapper, turnMapper, aiScenarioRouter,
+                aiScenarioExecution, modelGateway, new com.fasterxml.jackson.databind.ObjectMapper());
+        when(aiScenarioRouter.resolve(any(), any(), any())).thenReturn(
+                new AiScenarioRouter.ResolvedRoute(PRIMARY, null, false, AiScenarioRouter.SOURCE_PINNED));
     }
 
     @Test
@@ -72,26 +81,21 @@ class InterviewQuestionServiceTest {
         when(sessionMapper.findById(21L)).thenReturn(session);
         when(turnMapper.countBySession(21L)).thenReturn(0);
         when(turnMapper.listBySession(21L)).thenReturn(List.of());
-        stubModelOutput("请介绍秒杀核心链路中你亲自负责的部分，以及压测数据？");
-        org.mockito.Mockito.doAnswer(invocation -> {
-            invocation.<InterviewTurnRecord>getArgument(0).setId(101L);
-            return null;
-        }).when(turnMapper).insert(any(InterviewTurnRecord.class));
-        InterviewTurnRecord saved = turn(InterviewTurnType.MAIN,
-                "请介绍秒杀核心链路中你亲自负责的部分，以及压测数据？");
-        saved.setId(101L);
-        when(turnMapper.findById(101L)).thenReturn(saved);
+        stubExecution("请介绍秒杀核心链路中你亲自负责的部分，以及压测数据？");
+        stubInsertId(101L);
+        when(turnMapper.findById(101L)).thenReturn(savedTurn(101L, InterviewTurnType.MAIN,
+                "请介绍秒杀核心链路中你亲自负责的部分，以及压测数据？"));
 
         service.next(7L, 21L, new NextQuestionRequest("MAIN", null));
 
-        ArgumentCaptor<AiInvocation> captor = ArgumentCaptor.forClass(AiInvocation.class);
-        verify(modelGateway).stream(captor.capture());
-        String system = captor.getValue().systemPrompt();
-        String user = captor.getValue().userPrompt();
-        assertEquals(true, system.contains("严格追问真实职责"));
-        assertEquals(true, system.contains("重点考查方向：架构取舍"));
-        assertEquals(true, user.contains("秒杀中台"));
-        assertEquals(true, user.contains("高并发链路：秒杀核心链路设计"));
+        ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
+        verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_QUESTION), eq(7L), eq(5L),
+                system.capture(), user.capture(), anyInt(), any(Duration.class));
+        assertEquals(true, system.getValue().contains("严格追问真实职责"));
+        assertEquals(true, system.getValue().contains("重点考查方向：架构取舍"));
+        assertEquals(true, user.getValue().contains("秒杀中台"));
+        assertEquals(true, user.getValue().contains("高并发链路：秒杀核心链路设计"));
     }
 
     @Test
@@ -100,26 +104,20 @@ class InterviewQuestionServiceTest {
         when(sessionMapper.findById(21L)).thenReturn(session);
         when(turnMapper.countBySession(21L)).thenReturn(0);
         when(turnMapper.listBySession(21L)).thenReturn(List.of());
-        stubModelOutput("请解释 ConcurrentHashMap 在 JDK 8 中如何保证线程安全，以及 size() 的实现思路？");
-        org.mockito.Mockito.doAnswer(invocation -> {
-            invocation.<InterviewTurnRecord>getArgument(0).setId(100L);
-            return null;
-        }).when(turnMapper).insert(any(InterviewTurnRecord.class));
-        InterviewTurnRecord saved = turn(InterviewTurnType.MAIN,
-                "请解释 ConcurrentHashMap 在 JDK 8 中如何保证线程安全，以及 size() 的实现思路？");
-        saved.setId(100L);
-        when(turnMapper.findById(100L)).thenReturn(saved);
+        String question = "请解释 ConcurrentHashMap 在 JDK 8 中如何保证线程安全，以及 size() 的实现思路？";
+        stubExecution("追问：" + question);
+        stubInsertId(100L);
+        when(turnMapper.findById(100L)).thenReturn(savedTurn(100L, InterviewTurnType.MAIN, question));
 
-        var response = service.next(7L, 21L,
-                new NextQuestionRequest("MAIN", null));
+        var response = service.next(7L, 21L, new NextQuestionRequest("MAIN", null));
 
         ArgumentCaptor<InterviewTurnRecord> captor =
                 ArgumentCaptor.forClass(InterviewTurnRecord.class);
         verify(turnMapper).insert(captor.capture());
         assertEquals(1, captor.getValue().getTurnNo());
         assertEquals(InterviewTurnType.MAIN, captor.getValue().getTurnType());
-        assertEquals("请解释 ConcurrentHashMap 在 JDK 8 中如何保证线程安全，以及 size() 的实现思路？",
-                captor.getValue().getQuestion());
+        // 阻塞出题必须沿用与 SSE 相同的清洗规则，落库题目不带"追问："前缀
+        assertEquals(question, captor.getValue().getQuestion());
         assertEquals(100L, response.id());
     }
 
@@ -128,6 +126,7 @@ class InterviewQuestionServiceTest {
         InterviewSessionRecord session = runningSession();
         when(sessionMapper.findById(21L)).thenReturn(session);
         InterviewTurnRecord unanswered = turn(InterviewTurnType.MAIN, "问题");
+        unanswered.setAnswer(null);
         when(turnMapper.listBySession(21L)).thenReturn(List.of(unanswered));
 
         assertThrows(ApiException.class,
@@ -162,7 +161,7 @@ class InterviewQuestionServiceTest {
         when(sessionMapper.findById(21L)).thenReturn(session);
         when(turnMapper.countBySession(21L)).thenReturn(0);
         when(turnMapper.listBySession(21L)).thenReturn(List.of());
-        stubModelOutput("好的。");
+        stubExecution("好的。");
 
         assertThrows(ApiException.class,
                 () -> service.next(7L, 21L, new NextQuestionRequest("MAIN", null)));
@@ -180,7 +179,7 @@ class InterviewQuestionServiceTest {
     }
 
     @Test
-    void streamNextToleratesNullTextGatewayEvents() {
+    void streamNextUsesScenarioRouteAndToleratesNullTextGatewayEvents() {
         InterviewSessionRecord session = runningSession();
         when(sessionMapper.findById(21L)).thenReturn(session);
         when(turnMapper.countBySession(21L)).thenReturn(0);
@@ -192,10 +191,7 @@ class InterviewQuestionServiceTest {
                 new AiStreamEvent("delta", null, null, null, null, false, null, null, null),
                 new AiStreamEvent("delta", "线程池参数？", null, null, null, false, null, null, null),
                 new AiStreamEvent("finish", null, null, null, null, true, null, null, null)));
-        org.mockito.Mockito.doAnswer(invocation -> {
-            invocation.<InterviewTurnRecord>getArgument(0).setId(140L);
-            return null;
-        }).when(turnMapper).insert(any(InterviewTurnRecord.class));
+        stubInsertId(140L);
 
         List<org.springframework.http.codec.ServerSentEvent<String>> events =
                 service.streamNext(7L, 21L, new NextQuestionRequest("MAIN", null))
@@ -210,12 +206,29 @@ class InterviewQuestionServiceTest {
                 ArgumentCaptor.forClass(InterviewTurnRecord.class);
         verify(turnMapper).insert(captor.capture());
         assertEquals("请说明线程池参数？", captor.getValue().getQuestion());
+        // 流式路径同样按场景 + 会话快照账户选择，但不做备用切换
+        verify(aiScenarioRouter).resolve(7L, AiScenario.INTERVIEW_QUESTION, 5L);
+        ArgumentCaptor<AiInvocation> invocation = ArgumentCaptor.forClass(AiInvocation.class);
+        verify(modelGateway).stream(invocation.capture());
+        assertEquals(5L, invocation.getValue().connection().connectionId());
     }
 
-    private void stubModelOutput(String text) {
-        when(modelGateway.stream(any(AiInvocation.class)))
-                .thenReturn(Flux.just(new AiStreamEvent(
-                        "delta", text, null, null, null, false, null, null, null)));
+    private void stubExecution(String text) {
+        when(aiScenarioExecution.executeText(any(), any(), any(), any(), any(), anyInt(),
+                any(Duration.class))).thenReturn(text);
+    }
+
+    private void stubInsertId(Long id) {
+        org.mockito.Mockito.doAnswer(invocation -> {
+            invocation.<InterviewTurnRecord>getArgument(0).setId(id);
+            return null;
+        }).when(turnMapper).insert(any(InterviewTurnRecord.class));
+    }
+
+    private InterviewTurnRecord savedTurn(Long id, InterviewTurnType type, String question) {
+        InterviewTurnRecord record = turn(type, question);
+        record.setId(id);
+        return record;
     }
 
     private InterviewSessionRecord runningSession() {
