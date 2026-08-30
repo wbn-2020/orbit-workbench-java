@@ -265,6 +265,7 @@ class InterviewSessionServiceTest {
                 3,
                 12,
                 45,
+                null,
                 5L,
                 "DISABLED",
                 bindings);

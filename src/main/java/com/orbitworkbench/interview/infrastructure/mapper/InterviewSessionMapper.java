@@ -16,6 +16,11 @@ public interface InterviewSessionMapper {
             @Param("userId") Long userId,
             @Param("status") InterviewSessionStatus status);
 
+    List<InterviewSessionRecord> listScheduledBetween(
+            @Param("userId") Long userId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
     int countByInterviewer(@Param("interviewerId") Long interviewerId);
 
     int updateStatus(

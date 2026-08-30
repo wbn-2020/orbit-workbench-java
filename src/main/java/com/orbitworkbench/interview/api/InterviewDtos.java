@@ -36,6 +36,7 @@ public final class InterviewDtos {
             @NotNull @Min(0) @Max(20) Integer followUpLimit,
             @NotNull @Min(1) @Max(100) Integer turnLimit,
             @NotNull @Min(5) @Max(240) Integer durationLimitMinutes,
+            Instant scheduledAt,
             Long aiConnectionId,
             @Pattern(regexp = "DISABLED|ON_DEMAND|AUTO") String webSearchPolicy,
             @Size(max = 5) List<@Valid ProjectBindingRequest> projectBindings
@@ -82,6 +83,7 @@ public final class InterviewDtos {
             Integer followUpLimit,
             Integer turnLimit,
             Integer durationLimitMinutes,
+            Instant scheduledAt,
             List<ProjectBindingSnapshotResponse> projectBindings,
             String status,
             Instant startedAt,
@@ -107,6 +109,7 @@ public final class InterviewDtos {
                     record.getFollowUpLimit(),
                     record.getTurnLimit(),
                     record.getDurationLimitMinutes(),
+                    record.getScheduledAt(),
                     parseBindings(record.getProjectBindingsJson()),
                     record.getStatus() == null ? null : record.getStatus().name(),
                     record.getStartedAt(),

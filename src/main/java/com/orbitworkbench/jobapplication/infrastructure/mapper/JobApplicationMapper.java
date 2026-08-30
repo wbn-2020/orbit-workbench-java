@@ -3,6 +3,7 @@ package com.orbitworkbench.jobapplication.infrastructure.mapper;
 import com.orbitworkbench.jobapplication.domain.ApplicationStage;
 import com.orbitworkbench.jobapplication.domain.JobApplicationRecord;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import org.apache.ibatis.annotations.Param;
 
@@ -15,6 +16,11 @@ public interface JobApplicationMapper {
     List<JobApplicationRecord> listByUser(
             @Param("userId") Long userId,
             @Param("includeArchived") boolean includeArchived);
+
+    List<JobApplicationRecord> listWithInterviewDateBetween(
+            @Param("userId") Long userId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
 
     int updateEditable(JobApplicationRecord record);
 

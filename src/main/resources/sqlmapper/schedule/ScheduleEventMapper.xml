@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.schedule.infrastructure.mapper.ScheduleEventMapper">
+    <resultMap id="ScheduleEventMap" type="com.orbitworkbench.schedule.domain.ScheduleEventRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="sourceId" column="source_id"/>
+        <result property="title" column="title"/>
+        <result property="startAt" column="start_at"/>
+        <result property="endAt" column="end_at"/>
+        <result property="allDay" column="all_day"/>
+        <result property="status" column="status"/>
+        <result property="reminderMinutes" column="reminder_minutes"/>
+        <result property="resourceRoute" column="resource_route"/>
+        <result property="note" column="note"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, source_type, source_id, title, start_at, end_at, all_day,
+        status, reminder_minutes, resource_route, note, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.schedule.domain.ScheduleEventRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO schedule_event(
+            user_id, source_type, source_id, title, start_at, end_at, all_day,
+            status, reminder_minutes, resource_route, note, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{sourceType}, #{sourceId}, #{title}, #{startAt}, #{endAt}, #{allDay},
+            #{status}, #{reminderMinutes}, #{resourceRoute}, #{note}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findByIdAndUser" resultMap="ScheduleEventMap">
+        SELECT <include refid="allColumns"/>
+        FROM schedule_event
+        WHERE id = #{id} AND user_id = #{userId}
+    </select>
+
+    <select id="listCustomBetween" resultMap="ScheduleEventMap">
+        SELECT <include refid="allColumns"/>
+        FROM schedule_event
+        WHERE user_id = #{userId}
+          AND source_type = 'CUSTOM'
+          AND status &lt;&gt; 'CANCELLED'
+          AND start_at &gt;= #{from}
+          AND start_at &lt;= #{to}
+        ORDER BY start_at ASC, id ASC
+    </select>
+
+    <update id="update">
+        UPDATE schedule_event
+        SET title = #{title},
+            start_at = #{startAt},
+            end_at = #{endAt},
+            all_day = #{allDay},
+            reminder_minutes = #{reminderMinutes},
+            resource_route = #{resourceRoute},
+            note = #{note},
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND source_type = 'CUSTOM'
+    </update>
+
+    <update id="updateStatus">
+        UPDATE schedule_event
+        SET status = #{status},
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND source_type = 'CUSTOM'
+    </update>
+
+    <delete id="delete">
+        DELETE FROM schedule_event
+        WHERE id = #{id} AND user_id = #{userId} AND source_type = 'CUSTOM'
+    </delete>
+</mapper>

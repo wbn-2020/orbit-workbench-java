@@ -71,6 +71,17 @@
         ORDER BY due_date ASC, id ASC
     </select>
 
+    <select id="listActiveByDueRange" resultMap="StudyTaskMap">
+        SELECT <include refid="allColumns"/>
+        FROM study_task
+        WHERE user_id = #{userId}
+          AND due_date IS NOT NULL
+          AND due_date &gt;= #{from}
+          AND due_date &lt;= #{to}
+          AND status IN ('PLANNED', 'IN_PROGRESS', 'POSTPONED')
+        ORDER BY due_date ASC, id ASC
+    </select>
+
     <update id="updateStatus">
         UPDATE study_task
         SET status = #{status},

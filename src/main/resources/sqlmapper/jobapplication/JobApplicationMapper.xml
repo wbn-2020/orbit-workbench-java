@@ -106,4 +106,15 @@
         DELETE FROM job_application
         WHERE id = #{id} AND user_id = #{userId}
     </delete>
+
+    <select id="listWithInterviewDateBetween" resultMap="JobApplicationMap">
+        SELECT <include refid="allColumns"/>
+        FROM job_application
+        WHERE user_id = #{userId}
+          AND archived = 0
+          AND interview_date IS NOT NULL
+          AND interview_date &gt;= #{from}
+          AND interview_date &lt;= #{to}
+        ORDER BY interview_date ASC, id ASC
+    </select>
 </mapper>

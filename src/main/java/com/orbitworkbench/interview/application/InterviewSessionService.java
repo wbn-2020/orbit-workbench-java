@@ -114,6 +114,7 @@ public class InterviewSessionService {
         record.setFollowUpLimit(request.followUpLimit());
         record.setTurnLimit(request.turnLimit());
         record.setDurationLimitMinutes(request.durationLimitMinutes());
+        record.setScheduledAt(request.scheduledAt());
         record.setStatus(InterviewSessionStatus.READY);
         record.setCreatedAt(now);
         record.setUpdatedAt(now);

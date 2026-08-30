@@ -23,6 +23,7 @@ public class InterviewSessionRecord {
     private Integer followUpLimit;
     private Integer turnLimit;
     private Integer durationLimitMinutes;
+    private Instant scheduledAt;
     private InterviewSessionStatus status;
     private Instant startedAt;
     private Instant endedAt;
@@ -79,6 +80,8 @@ public class InterviewSessionRecord {
     public void setDurationLimitMinutes(Integer durationLimitMinutes) {
         this.durationLimitMinutes = durationLimitMinutes;
     }
+    public Instant getScheduledAt() { return scheduledAt; }
+    public void setScheduledAt(Instant scheduledAt) { this.scheduledAt = scheduledAt; }
     public InterviewSessionStatus getStatus() { return status; }
     public void setStatus(InterviewSessionStatus status) { this.status = status; }
     public Instant getStartedAt() { return startedAt; }
