@@ -3,15 +3,19 @@ package com.orbitworkbench.interview.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.orbitworkbench.ai.application.AiInvocation;
+import com.orbitworkbench.ai.application.AiProviderException;
 import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.ai.application.ModelGateway;
+import com.orbitworkbench.aiconnection.application.AiCallAuditRecorder;
 import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.application.AiScenarioRouter;
@@ -24,6 +28,7 @@ import com.orbitworkbench.interview.domain.InterviewTurnType;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewSessionMapper;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewTurnMapper;
 import com.orbitworkbench.shared.api.ApiException;
+import com.orbitworkbench.shared.api.ErrorCode;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +39,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.http.HttpStatus;
 import reactor.core.publisher.Flux;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,6 +63,9 @@ class InterviewQuestionServiceTest {
     private AiScenarioExecutionService aiScenarioExecution;
 
     @Mock
+    private AiCallAuditRecorder aiCallAuditRecorder;
+
+    @Mock
     private ModelGateway modelGateway;
 
     private InterviewQuestionService service;
@@ -64,9 +73,12 @@ class InterviewQuestionServiceTest {
     @BeforeEach
     void setUp() {
         service = new InterviewQuestionService(sessionMapper, turnMapper, aiScenarioRouter,
-                aiScenarioExecution, modelGateway, new com.fasterxml.jackson.databind.ObjectMapper());
+                aiScenarioExecution, aiCallAuditRecorder, modelGateway,
+                new com.fasterxml.jackson.databind.ObjectMapper());
         when(aiScenarioRouter.resolve(any(), any(), any())).thenReturn(
                 new AiScenarioRouter.ResolvedRoute(PRIMARY, null, false, AiScenarioRouter.SOURCE_PINNED));
+        when(aiCallAuditRecorder.start(any(), any(), any(), anyInt(), any())).thenReturn(77L);
+        when(aiCallAuditRecorder.snapshotJson(any(), any(), anyInt(), anyBoolean())).thenReturn("{}");
     }
 
     @Test
@@ -211,6 +223,69 @@ class InterviewQuestionServiceTest {
         ArgumentCaptor<AiInvocation> invocation = ArgumentCaptor.forClass(AiInvocation.class);
         verify(modelGateway).stream(invocation.capture());
         assertEquals(5L, invocation.getValue().connection().connectionId());
+    }
+
+    @Test
+    void streamNextEmitsErrorEventAndNeverPersistsHalfQuestion() {
+        InterviewSessionRecord session = runningSession();
+        when(sessionMapper.findById(21L)).thenReturn(session);
+        when(turnMapper.countBySession(21L)).thenReturn(0);
+        when(turnMapper.listBySession(21L)).thenReturn(List.of());
+        when(modelGateway.stream(any(AiInvocation.class))).thenReturn(Flux.concat(
+                Flux.just(new AiStreamEvent(
+                        "delta", "请说明", null, null, null, false, null, null, null)),
+                Flux.error(new AiProviderException(ErrorCode.RATE_LIMITED,
+                        HttpStatus.TOO_MANY_REQUESTS, 429, "上游限流", null))));
+
+        List<org.springframework.http.codec.ServerSentEvent<String>> events =
+                service.streamNext(7L, 21L, new NextQuestionRequest("MAIN", null))
+                        .collectList().block();
+
+        assertEquals("error", events.get(events.size() - 1).event());
+        assertEquals(true, events.get(events.size() - 1).data().contains("RATE_LIMITED"),
+                "error 事件应带上游错误码，实际：" + events.get(events.size() - 1).data());
+        verify(turnMapper, never()).insert(any(InterviewTurnRecord.class));
+        verify(aiCallAuditRecorder).finish(eq(77L), eq(7L), eq(AiScenario.INTERVIEW_QUESTION),
+                eq(AiCallAuditRecorder.STATUS_FAILED), eq("RATE_LIMITED"), anyInt(), anyInt(),
+                anyInt(), eq(5L), eq(false));
+    }
+
+    @Test
+    void streamNextRecordsSucceededAuditWithQuestionLength() {
+        InterviewSessionRecord session = runningSession();
+        when(sessionMapper.findById(21L)).thenReturn(session);
+        when(turnMapper.countBySession(21L)).thenReturn(0);
+        when(turnMapper.listBySession(21L)).thenReturn(List.of());
+        when(modelGateway.stream(any(AiInvocation.class))).thenReturn(Flux.just(
+                new AiStreamEvent("delta", "请说明线程池的核心参数与拒绝策略？",
+                        null, null, null, false, null, null, null)));
+        stubInsertId(141L);
+
+        service.streamNext(7L, 21L, new NextQuestionRequest("MAIN", null)).collectList().block();
+
+        verify(aiCallAuditRecorder).finish(eq(77L), eq(7L), eq(AiScenario.INTERVIEW_QUESTION),
+                eq(AiCallAuditRecorder.STATUS_SUCCEEDED), isNull(), anyInt(), anyInt(),
+                eq("请说明线程池的核心参数与拒绝策略？".length()), eq(5L), eq(false));
+    }
+
+    @Test
+    void streamNextRejectsTooShortOutputWithoutInsert() {
+        InterviewSessionRecord session = runningSession();
+        when(sessionMapper.findById(21L)).thenReturn(session);
+        when(turnMapper.countBySession(21L)).thenReturn(0);
+        when(turnMapper.listBySession(21L)).thenReturn(List.of());
+        when(modelGateway.stream(any(AiInvocation.class))).thenReturn(Flux.just(
+                new AiStreamEvent("delta", "好的", null, null, null, false, null, null, null)));
+
+        List<org.springframework.http.codec.ServerSentEvent<String>> events =
+                service.streamNext(7L, 21L, new NextQuestionRequest("MAIN", null))
+                        .collectList().block();
+
+        assertEquals("error", events.get(events.size() - 1).event());
+        verify(turnMapper, never()).insert(any(InterviewTurnRecord.class));
+        verify(aiCallAuditRecorder).finish(eq(77L), eq(7L), eq(AiScenario.INTERVIEW_QUESTION),
+                eq(AiCallAuditRecorder.STATUS_FAILED), eq("INVALID_STRUCTURED_OUTPUT"),
+                anyInt(), anyInt(), anyInt(), eq(5L), eq(false));
     }
 
     private void stubExecution(String text) {

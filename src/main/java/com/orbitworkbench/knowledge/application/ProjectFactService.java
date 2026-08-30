@@ -2,6 +2,7 @@ package com.orbitworkbench.knowledge.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.orbitworkbench.ai.application.AiOutputCleaner;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.ConfirmFactRequest;
@@ -37,6 +38,9 @@ public class ProjectFactService {
     private static final int MAX_OUTPUT_TOKENS = 2048;
     private static final int MAX_FILES = 20;
     private static final int FILE_SNIPPET = 1500;
+    private static final int MAX_FACTS = 30;
+    private static final int MAX_TITLE = 255;
+    private static final int MAX_CONTENT = 4000;
     private static final Set<String> FACT_TYPES = Set.of(
             "BUSINESS", "STRUCTURE", "RISK", "RESPONSIBILITY", "TECH_STACK", "OTHER");
 
@@ -143,8 +147,11 @@ public class ProjectFactService {
         return material.toString();
     }
 
-    private List<ProjectFactRecord> parseFacts(Long userId, Long versionId, String output) {
-        String json = extractArray(output);
+    List<ProjectFactRecord> parseFacts(Long userId, Long versionId, String output) {
+        String json = AiOutputCleaner.extractJsonArray(output);
+        if (json == null) {
+            throw unstructured("画像输出中没有 JSON 数组");
+        }
         JsonNode root;
         try {
             root = objectMapper.readTree(json);
@@ -154,40 +161,38 @@ public class ProjectFactService {
         if (!root.isArray() || root.isEmpty()) {
             throw unstructured("画像输出为空数组");
         }
+        if (root.size() > MAX_FACTS) {
+            throw unstructured("画像事实数量超过 " + MAX_FACTS + " 条");
+        }
         List<ProjectFactRecord> facts = new ArrayList<>();
         Instant now = Instant.now();
-        root.forEach(node -> {
+        int index = 0;
+        for (JsonNode node : root) {
+            index += 1;
             String factType = node.path("factType").asText("");
-            String title = node.path("title").asText("");
-            String content = node.path("content").asText("");
-            int confidence = node.path("confidence").asInt(-1);
+            String title = AiOutputCleaner.summarize(node.path("title").asText(""), MAX_TITLE);
+            String content = AiOutputCleaner.truncate(node.path("content").asText("").trim(),
+                    MAX_CONTENT);
+            int confidence = node.path("confidence").isNumber() ? node.path("confidence").asInt() : -1;
             if (!FACT_TYPES.contains(factType) || title.isBlank() || content.isBlank()
                     || confidence < 0 || confidence > 100) {
-                throw unstructured("画像事实字段非法：" + title);
+                // 只报序号：模型产出的字段内容不得进入错误摘要、日志与接口响应
+                throw unstructured("第 " + index + " 条画像事实字段非法");
             }
             ProjectFactRecord record = new ProjectFactRecord();
             record.setUserId(userId);
             record.setProjectVersionId(versionId);
             record.setFactType(factType);
-            record.setTitle(title.trim());
-            record.setContent(content.trim());
+            record.setTitle(title);
+            record.setContent(content);
             record.setSource(FactSource.AI_ANALYZED);
             record.setConfirmationStatus(FactStatus.ANALYZED);
             record.setConfidence(confidence);
             record.setCreatedAt(now);
             record.setUpdatedAt(now);
             facts.add(record);
-        });
-        return facts;
-    }
-
-    private String extractArray(String output) {
-        int start = output.indexOf('[');
-        int end = output.lastIndexOf(']');
-        if (start < 0 || end <= start) {
-            throw unstructured("画像输出中没有 JSON 数组");
         }
-        return output.substring(start, end + 1);
+        return facts;
     }
 
     private ApiException unstructured(String message) {

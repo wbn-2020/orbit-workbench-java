@@ -2,6 +2,8 @@ package com.orbitworkbench.interview.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.orbitworkbench.ai.application.AiErrorSanitizer;
+import com.orbitworkbench.ai.application.AiOutputCleaner;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.interview.api.InterviewDtos.ReportResponse;
@@ -21,6 +23,7 @@ import com.orbitworkbench.shared.api.ErrorCode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +47,10 @@ public class InterviewReportService {
     private static final int MAX_OUTPUT_TOKENS = 4096;
     private static final int TURN_SNIPPET_LIMIT = 4000;
     private static final List<String> RECOMMENDATIONS = List.of("STRONG_PASS", "PASS", "HOLD", "FAIL");
+    private static final int MAX_DIMENSIONS = 30;
+    private static final int MAX_DIMENSION_NAME = 40;
+    private static final int MAX_LIST_ITEMS = 20;
+    private static final int MAX_LIST_ITEM_CHARS = 300;
 
     private static final String SYSTEM_PROMPT = """
             你是一名严格的 Java 后端面试评估官。根据给定的面试配置与完整问答记录输出评分报告。
@@ -99,7 +106,8 @@ public class InterviewReportService {
                     connectionId, SYSTEM_PROMPT, userPrompt, MAX_OUTPUT_TOKENS, MODEL_TIMEOUT);
             persistScoredReport(session, parseScoredReport(modelOutput));
         } catch (ApiException exception) {
-            reportMapper.markFailed(session.getId(), exception.getMessage(), Instant.now());
+            reportMapper.markFailed(session.getId(),
+                    AiErrorSanitizer.sanitize(exception.getMessage(), null), Instant.now());
             notificationService.notify(
                     NotificationEvent.INTERVIEW_REPORT_FAILED,
                     session.getUserId(),
@@ -193,8 +201,12 @@ public class InterviewReportService {
 
     ScoredReport parseScoredReport(String modelOutput) {
         JsonNode root;
+        String json = AiOutputCleaner.extractJsonObject(modelOutput);
+        if (json == null) {
+            throw unstructured("模型输出中没有 JSON 对象");
+        }
         try {
-            root = objectMapper.readTree(extractJsonObject(modelOutput));
+            root = objectMapper.readTree(json);
         } catch (ApiException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -213,13 +225,23 @@ public class InterviewReportService {
             throw unstructured("dimensionScores 缺失");
         }
         Map<String, Integer> dimensionScores = new LinkedHashMap<>();
-        dims.fields().forEachRemaining(field -> {
-            int value = field.getValue().asInt(-1);
-            if (value < 0 || value > 100) {
-                throw unstructured("评分维度 " + field.getKey() + " 非法");
+        int index = 0;
+        for (Iterator<Map.Entry<String, JsonNode>> it = dims.fields(); it.hasNext(); ) {
+            Map.Entry<String, JsonNode> field = it.next();
+            index += 1;
+            if (index > MAX_DIMENSIONS) {
+                throw unstructured("评分维度数量超过 " + MAX_DIMENSIONS);
             }
-            dimensionScores.put(field.getKey(), value);
-        });
+            String key = field.getKey().trim();
+            if (key.isEmpty() || key.length() > MAX_DIMENSION_NAME) {
+                throw unstructured("第 " + index + " 个评分维度名称非法");
+            }
+            int value = field.getValue().isNumber() ? field.getValue().asInt() : -1;
+            if (value < 0 || value > 100) {
+                throw unstructured("第 " + index + " 个评分维度取值非法");
+            }
+            dimensionScores.put(key, value);
+        }
         return new ScoredReport(totalScore, recommendation, dimensionScores,
                 readStrings(root, "strengths"), readStrings(root, "weaknesses"),
                 readStrings(root, "followUpFindings"), readStrings(root, "projectMastery"),
@@ -239,19 +261,22 @@ public class InterviewReportService {
     private List<String> readStrings(JsonNode root, String field) {
         JsonNode node = root.path(field);
         List<String> result = new ArrayList<>();
-        if (node.isArray()) {
-            node.forEach(item -> result.add(item.asText()));
+        if (!node.isArray()) {
+            return result;
+        }
+        for (JsonNode item : node) {
+            if (result.size() >= MAX_LIST_ITEMS) {
+                break;
+            }
+            if (!item.isTextual() && !item.isNumber()) {
+                continue;
+            }
+            String value = AiOutputCleaner.summarize(item.asText(), MAX_LIST_ITEM_CHARS);
+            if (!value.isEmpty()) {
+                result.add(value);
+            }
         }
         return result;
-    }
-
-    private String extractJsonObject(String output) {
-        int start = output.indexOf('{');
-        int end = output.lastIndexOf('}');
-        if (start < 0 || end <= start) {
-            throw unstructured("模型输出中没有 JSON 对象");
-        }
-        return output.substring(start, end + 1);
     }
 
     private ApiException unstructured(String message) {

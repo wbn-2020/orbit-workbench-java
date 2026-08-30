@@ -2,6 +2,7 @@ package com.orbitworkbench.interview.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -24,6 +25,7 @@ import com.orbitworkbench.interview.infrastructure.mapper.InterviewSessionMapper
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewTurnMapper;
 import com.orbitworkbench.notification.application.NotificationService;
 import com.orbitworkbench.shared.api.ApiException;
+import com.orbitworkbench.shared.api.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
@@ -36,6 +38,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.http.HttpStatus;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -159,6 +162,77 @@ class InterviewReportServiceTest {
         verify(reportMapper).markPending(eq(21L), any());
         verify(reportMapper).markReady(eq(21L), eq(84), any(), eq("PASS"),
                 any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void parsesFencedJsonWithTrailingProseAndStrayBrace() {
+        stubSessionAndPendingReport();
+        stubModelOutput("```json\n" + VALID_JSON + "\n```\n以上为本场评分，最终结论见附录（附录 { 暂缺）。");
+        InterviewReportRecord ready = report(ReportStatus.REPORT_READY);
+        ready.setTotalScore(84);
+        when(reportMapper.findBySessionId(21L))
+                .thenReturn(report(ReportStatus.REPORT_PENDING))
+                .thenReturn(ready);
+        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"),
+                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
+        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
+                eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any())).thenReturn(1);
+
+        var response = service.generate(7L, 21L, 5L);
+
+        assertEquals(84, response.report().totalScore());
+    }
+
+    @Test
+    void invalidDimensionNeverLeaksModelTextIntoError() {
+        String sneaky = "{\"totalScore\":70,\"hiringRecommendation\":\"PASS\",\"dimensionScores\":{"
+                + "\"sk-live-secret-abcdef\":\"非常高\"}}";
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.parseScoredReport(sneaky));
+
+        assertEquals(ErrorCode.INVALID_STRUCTURED_OUTPUT, exception.getErrorCode());
+        assertTrue(!exception.getMessage().contains("sk-live-secret"),
+                "错误消息不得带上模型产出的键名，实际：" + exception.getMessage());
+        assertTrue(exception.getMessage().contains("第 1 个"),
+                "应改为按序号定位问题项，实际：" + exception.getMessage());
+    }
+
+    @Test
+    void stringListsAreCappedAndSkipNonTextItems() {
+        StringBuilder builder = new StringBuilder("{\"totalScore\":70,"
+                + "\"hiringRecommendation\":\"PASS\",\"dimensionScores\":{\"业务理解\":70},");
+        builder.append("\"strengths\":[");
+        for (int index = 0; index < 40; index += 1) {
+            builder.append(index > 0 ? "," : "").append("\"要点").append(index).append("\"");
+        }
+        builder.append("],\"weaknesses\":[null,{\"嵌套\":\"对象\"},\"\",")
+                .append("{\"数字\":7},\"数字也算一条\"]}");
+
+        InterviewReportService.ScoredReport scored = service.parseScoredReport(builder.toString());
+
+        assertEquals(20, scored.strengths().size());
+        assertEquals(List.of("数字也算一条"), scored.weaknesses());
+    }
+
+    @Test
+    void failureReasonIsSanitizedAndBounded() {
+        stubSessionAndPendingReport();
+        String noisy = "上游返回 " + "很长".repeat(600) + "\nBearer sk-should-not-persist";
+        when(aiScenarioExecution.executeText(any(), any(), any(), any(), any(), anyInt(),
+                any(Duration.class))).thenThrow(new ApiException(
+                        HttpStatus.BAD_GATEWAY, ErrorCode.UPSTREAM_UNAVAILABLE, noisy));
+        when(reportMapper.findBySessionId(21L)).thenReturn(report(ReportStatus.REPORT_PENDING));
+
+        assertThrows(ApiException.class, () -> service.generate(7L, 21L, 5L));
+
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(reportMapper).markFailed(eq(21L), reason.capture(), any());
+        assertTrue(reason.getValue().length() <= 512,
+                "failure_reason 必须落在列宽内，实际长度：" + reason.getValue().length());
+        assertTrue(!reason.getValue().contains("\n"), "失败摘要应压成一行");
+        assertTrue(!reason.getValue().contains("sk-should-not-persist"),
+                "失败摘要不得带凭据形态内容");
     }
 
     @Test

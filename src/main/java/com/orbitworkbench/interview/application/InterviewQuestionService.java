@@ -2,10 +2,12 @@ package com.orbitworkbench.interview.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.orbitworkbench.ai.application.AiCallFailures;
 import com.orbitworkbench.ai.application.AiInvocation;
+import com.orbitworkbench.ai.application.AiOutputCleaner;
 import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.ai.application.ModelGateway;
-import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
+import com.orbitworkbench.aiconnection.application.AiCallAuditRecorder;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.application.AiScenarioRouter;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
@@ -49,6 +51,7 @@ public class InterviewQuestionService {
     private final InterviewTurnMapper turnMapper;
     private final AiScenarioRouter aiScenarioRouter;
     private final AiScenarioExecutionService aiScenarioExecution;
+    private final AiCallAuditRecorder aiCallAuditRecorder;
     private final ModelGateway modelGateway;
     private final ObjectMapper objectMapper;
 
@@ -56,12 +59,14 @@ public class InterviewQuestionService {
                                     InterviewTurnMapper turnMapper,
                                     AiScenarioRouter aiScenarioRouter,
                                     AiScenarioExecutionService aiScenarioExecution,
+                                    AiCallAuditRecorder aiCallAuditRecorder,
                                     ModelGateway modelGateway,
                                     ObjectMapper objectMapper) {
         this.sessionMapper = sessionMapper;
         this.turnMapper = turnMapper;
         this.aiScenarioRouter = aiScenarioRouter;
         this.aiScenarioExecution = aiScenarioExecution;
+        this.aiCallAuditRecorder = aiCallAuditRecorder;
         this.modelGateway = modelGateway;
         this.objectMapper = objectMapper;
     }
@@ -95,7 +100,8 @@ public class InterviewQuestionService {
 
     /**
      * 流式出题：SSE 事件流 start -> delta* -> done（题目落库后返回 turnId）。
-     * 会话/预算校验失败同步抛 ApiException；模型侧失败以 error 事件下发后正常收流。
+     * 会话/预算校验失败同步抛 ApiException；模型侧失败以 error 事件下发后正常收流，
+     * 且失败时不落库半成品题目。
      */
     public Flux<ServerSentEvent<String>> streamNext(Long userId, Long sessionId,
                                                     NextQuestionRequest request) {
@@ -106,42 +112,74 @@ public class InterviewQuestionService {
         if (turnType == InterviewTurnType.FOLLOW_UP) {
             requireLastAnswered(session.getId());
         }
-        AiConnectionRuntimeConfig connection = aiScenarioRouter
-                .resolve(userId, AiScenario.INTERVIEW_QUESTION, session.getAiConnectionIdSnapshot())
-                .primary();
+        AiScenarioRouter.ResolvedRoute route = aiScenarioRouter.resolve(
+                userId, AiScenario.INTERVIEW_QUESTION, session.getAiConnectionIdSnapshot());
         PromptPair pair = buildPrompt(session, turnMapper.listBySession(session.getId()),
                 turnType, request.instruction());
+        Long sessionIdValue = session.getId();
 
+        return Flux.defer(() -> streamEvents(userId, sessionIdValue, turnType, route, pair));
+    }
+
+    private Flux<ServerSentEvent<String>> streamEvents(Long userId, Long sessionId,
+                                                       InterviewTurnType turnType,
+                                                       AiScenarioRouter.ResolvedRoute route,
+                                                       PromptPair pair) {
         StringBuilder buffer = new StringBuilder();
-        ServerSentEvent<String> start = sse("start", "{\"turnNo\":"
-                + (turnMapper.countBySession(session.getId()) + 1)
+        int requestChars = pair.system().length() + pair.user().length();
+        long start = System.nanoTime();
+        Long auditId = aiCallAuditRecorder.start(userId, AiScenario.INTERVIEW_QUESTION, route,
+                requestChars, aiCallAuditRecorder.snapshotJson(AiScenario.INTERVIEW_QUESTION, route,
+                        MAX_OUTPUT_TOKENS, true));
+        int turnNo = turnMapper.countBySession(sessionId) + 1;
+        ServerSentEvent<String> startEvent = sse("start", "{\"turnNo\":" + turnNo
                 + ",\"type\":\"" + turnType + "\"}");
         Flux<ServerSentEvent<String>> body = modelGateway
-                .stream(new AiInvocation(connection, pair.system(), pair.user(), null, null, true,
-                        MAX_OUTPUT_TOKENS))
+                .stream(new AiInvocation(route.primary(), pair.system(), pair.user(),
+                        null, null, true, MAX_OUTPUT_TOKENS))
                 .mapNotNull(AiStreamEvent::text)
                 .map(text -> {
                     buffer.append(text);
                     return sse("delta", text);
                 });
         Flux<ServerSentEvent<String>> tail = Flux.defer(() -> {
-            String question = cleanQuestion(buffer.toString());
+            String question = AiOutputCleaner.cleanQuestion(buffer.toString(), QUESTION_MAX_LENGTH);
             if (question.length() < QUESTION_MIN_LENGTH) {
-                return Flux.just(sse("error", "模型未返回有效题目"));
+                aiCallAuditRecorder.finish(auditId, userId, AiScenario.INTERVIEW_QUESTION,
+                        AiCallAuditRecorder.STATUS_FAILED,
+                        ErrorCode.INVALID_STRUCTURED_OUTPUT.name(), elapsedMillis(start),
+                        requestChars, buffer.length(), route.primary().connectionId(), false);
+                return Flux.just(sse("error", "面试出题未完成：模型未返回有效题目"));
             }
             Instant now = Instant.now();
             InterviewTurnRecord turn = new InterviewTurnRecord();
-            turn.setSessionId(session.getId());
-            turn.setTurnNo(turnMapper.countBySession(session.getId()) + 1);
+            turn.setSessionId(sessionId);
+            turn.setTurnNo(turnNo);
             turn.setTurnType(turnType);
             turn.setQuestion(question);
             turn.setCreatedAt(now);
             turnMapper.insert(turn);
+            aiCallAuditRecorder.finish(auditId, userId, AiScenario.INTERVIEW_QUESTION,
+                    AiCallAuditRecorder.STATUS_SUCCEEDED, null, elapsedMillis(start),
+                    requestChars, question.length(), route.primary().connectionId(), false);
             String payload = "{\"turnId\":" + turn.getId() + ",\"turnNo\":" + turn.getTurnNo()
                     + ",\"question\":\"" + jsonEscape(question) + "\"}";
             return Flux.just(sse("done", payload));
         });
-        return Flux.concat(Flux.just(start), body, tail);
+        return Flux.concat(Flux.just(startEvent), body, tail)
+                .onErrorResume(failure -> {
+                    ApiException mapped = AiCallFailures.toApiException(
+                            AiScenario.INTERVIEW_QUESTION.label(), failure);
+                    aiCallAuditRecorder.finish(auditId, userId, AiScenario.INTERVIEW_QUESTION,
+                            AiCallAuditRecorder.STATUS_FAILED, mapped.getErrorCode().name(),
+                            elapsedMillis(start), requestChars, buffer.length(),
+                            route.primary().connectionId(), false);
+                    return Flux.just(sse("error", mapped.getMessage()));
+                });
+    }
+
+    private int elapsedMillis(long start) {
+        return Math.max(0, (int) ((System.nanoTime() - start) / 1_000_000L));
     }
 
     private InterviewSessionRecord requireOwned(Long userId, Long sessionId) {
@@ -313,7 +351,7 @@ public class InterviewQuestionService {
     private record PromptPair(String system, String user) {}
 
     private String requireQuestion(String rawOutput) {
-        String question = cleanQuestion(rawOutput);
+        String question = AiOutputCleaner.cleanQuestion(rawOutput, QUESTION_MAX_LENGTH);
         if (question.length() < QUESTION_MIN_LENGTH) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.INVALID_STRUCTURED_OUTPUT,
                     "模型未返回有效题目");
@@ -323,15 +361,6 @@ public class InterviewQuestionService {
 
     private ServerSentEvent<String> sse(String event, String data) {
         return ServerSentEvent.builder(data).event(event).build();
-    }
-
-    private String cleanQuestion(String raw) {
-        String question = raw.trim()
-                .replaceAll("^#+\\s*", "")
-                .replaceAll("^[0-9]+[.、]\\s*", "")
-                .replaceAll("^追问[:：]\\s*", "");
-        return question.length() > QUESTION_MAX_LENGTH
-                ? question.substring(0, QUESTION_MAX_LENGTH) : question;
     }
 
     private String jsonEscape(String value) {

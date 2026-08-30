@@ -1,7 +1,7 @@
 package com.orbitworkbench.aiconnection.application;
 
+import com.orbitworkbench.ai.application.AiCallFailures;
 import com.orbitworkbench.ai.application.AiInvocation;
-import com.orbitworkbench.ai.application.AiProviderException;
 import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.ai.application.ModelGateway;
 import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
@@ -11,7 +11,6 @@ import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import java.time.Duration;
 import java.util.Set;
-import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -120,35 +119,7 @@ public class AiScenarioExecutionService {
      * 错误码透传：适配器已经区分好的上游语义不再被统一压成 502 UPSTREAM_UNAVAILABLE。
      */
     private ApiException toApiException(AiScenario scenario, RuntimeException exception) {
-        if (exception instanceof AiProviderException provider) {
-            return new ApiException(provider.getStatus(), provider.getErrorCode(),
-                    scenario.label() + "调用失败：" + provider.getErrorCode().name());
-        }
-        if (exception instanceof ApiException apiException) {
-            return apiException;
-        }
-        if (isTimeout(exception)) {
-            return new ApiException(HttpStatus.GATEWAY_TIMEOUT, ErrorCode.REQUEST_TIMEOUT,
-                    scenario.label() + "调用失败：" + ErrorCode.REQUEST_TIMEOUT.name());
-        }
-        return new ApiException(HttpStatus.BAD_GATEWAY, ErrorCode.UPSTREAM_UNAVAILABLE,
-                scenario.label() + "调用未完成：" + exception.getClass().getSimpleName());
-    }
-
-    private boolean isTimeout(Throwable exception) {
-        Throwable current = exception;
-        while (current != null) {
-            if (current instanceof TimeoutException) {
-                return true;
-            }
-            if (current instanceof IllegalStateException illegal
-                    && illegal.getMessage() != null
-                    && illegal.getMessage().contains("Timeout on blocking read")) {
-                return true;
-            }
-            current = current.getCause();
-        }
-        return false;
+        return AiCallFailures.toApiException(scenario.label(), exception);
     }
 
     private int elapsedMillis(long start) {
