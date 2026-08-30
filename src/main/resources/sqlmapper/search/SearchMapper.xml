@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.search.infrastructure.mapper.SearchMapper">
+    <resultMap id="SearchHitRowMap" type="com.orbitworkbench.search.domain.SearchHitRow">
+        <id property="id" column="id"/>
+        <result property="projectId" column="projectId"/>
+        <result property="projectVersionId" column="projectVersionId"/>
+        <result property="sessionId" column="sessionId"/>
+        <result property="turnNo" column="turnNo"/>
+        <result property="title" column="title"/>
+        <result property="body" column="body"/>
+        <result property="sub" column="sub"/>
+        <result property="updatedAt" column="updatedAt"/>
+    </resultMap>
+
+    <select id="searchProjects" resultMap="SearchHitRowMap">
+        SELECT p.id AS id, p.id AS projectId, p.name AS title,
+               NULL AS body, NULL AS sub, p.updated_at AS updatedAt
+        FROM project p
+        WHERE p.user_id = #{userId}
+          AND p.name LIKE CONCAT('%', #{keyword}, '%')
+        ORDER BY p.updated_at DESC, p.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchProjectVersions" resultMap="SearchHitRowMap">
+        SELECT pv.id AS id, pv.project_id AS projectId, pv.id AS projectVersionId,
+               pv.source_file_name AS title, NULL AS body,
+               CONCAT('V', pv.version_number) AS sub, pv.updated_at AS updatedAt
+        FROM project_version pv
+        JOIN project p ON p.id = pv.project_id
+        WHERE p.user_id = #{userId}
+          AND pv.source_file_name LIKE CONCAT('%', #{keyword}, '%')
+        ORDER BY pv.updated_at DESC, pv.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchKnowledge" resultMap="SearchHitRowMap">
+        SELECT kc.id AS id, pv.project_id AS projectId, kc.project_version_id AS projectVersionId,
+               kc.relative_path AS title, kc.content AS body, NULL AS sub, kc.created_at AS updatedAt,
+               MATCH(kc.content) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE) AS relevance
+        FROM knowledge_chunk kc
+        JOIN project_version pv ON pv.id = kc.project_version_id
+        WHERE kc.user_id = #{userId}
+          AND MATCH(kc.content) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE)
+        ORDER BY relevance DESC, kc.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchKnowledgeLike" resultMap="SearchHitRowMap">
+        SELECT kc.id AS id, pv.project_id AS projectId, kc.project_version_id AS projectVersionId,
+               kc.relative_path AS title, kc.content AS body, NULL AS sub, kc.created_at AS updatedAt
+        FROM knowledge_chunk kc
+        JOIN project_version pv ON pv.id = kc.project_version_id
+        WHERE kc.user_id = #{userId}
+          AND kc.content LIKE CONCAT('%', #{keyword}, '%')
+        ORDER BY kc.project_version_id ASC, kc.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchInterviewSessions" resultMap="SearchHitRowMap">
+        SELECT s.id AS id, s.id AS sessionId, s.title AS title, s.target_role AS body,
+               s.interviewer_name_snapshot AS sub, s.updated_at AS updatedAt
+        FROM interview_session s
+        WHERE s.user_id = #{userId}
+          AND (s.title LIKE CONCAT('%', #{keyword}, '%')
+               OR s.target_role LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY s.updated_at DESC, s.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchInterviewTurns" resultMap="SearchHitRowMap">
+        SELECT t.id AS id, t.session_id AS sessionId, t.turn_no AS turnNo,
+               s.title AS title,
+               CONCAT(COALESCE(t.question, ''), ' ', COALESCE(t.answer, '')) AS body,
+               CONCAT('第', t.turn_no, '题') AS sub, t.created_at AS updatedAt
+        FROM interview_turn t
+        JOIN interview_session s ON s.id = t.session_id
+        WHERE s.user_id = #{userId}
+          AND (t.question LIKE CONCAT('%', #{keyword}, '%')
+               OR t.answer LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchReports" resultMap="SearchHitRowMap">
+        SELECT r.id AS id, r.session_id AS sessionId, s.title AS title,
+               CONCAT('总分 ', COALESCE(r.total_score, 0), ' · ', COALESCE(r.hiring_recommendation, '')) AS body,
+               NULL AS sub, r.updated_at AS updatedAt
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+          AND r.status = 'REPORT_READY'
+          AND (s.title LIKE CONCAT('%', #{keyword}, '%')
+               OR s.target_role LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY r.updated_at DESC, r.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchJobApplications" resultMap="SearchHitRowMap">
+        SELECT a.id AS id, CONCAT(a.company, ' · ', a.role) AS title,
+               CONCAT(COALESCE(a.jd_summary, ''), ' ', COALESCE(a.note, '')) AS body,
+               a.stage AS sub, a.updated_at AS updatedAt
+        FROM job_application a
+        WHERE a.user_id = #{userId}
+          AND a.archived = 0
+          AND (a.company LIKE CONCAT('%', #{keyword}, '%')
+               OR a.role LIKE CONCAT('%', #{keyword}, '%')
+               OR a.jd_summary LIKE CONCAT('%', #{keyword}, '%')
+               OR a.note LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY a.updated_at DESC, a.id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

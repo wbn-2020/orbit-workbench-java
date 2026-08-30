@@ -22,6 +22,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         "com.orbitworkbench.notification.infrastructure.mapper",
         "com.orbitworkbench.project.infrastructure.mapper",
         "com.orbitworkbench.schedule.infrastructure.mapper",
+        "com.orbitworkbench.search.infrastructure.mapper",
         "com.orbitworkbench.studyplan.infrastructure.mapper",
         "com.orbitworkbench.workspace.infrastructure.mapper"
 })
