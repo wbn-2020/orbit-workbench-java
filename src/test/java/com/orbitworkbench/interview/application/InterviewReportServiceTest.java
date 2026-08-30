@@ -24,6 +24,7 @@ import com.orbitworkbench.interview.domain.ReportStatus;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewReportMapper;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewSessionMapper;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewTurnMapper;
+import com.orbitworkbench.notification.application.NotificationService;
 import com.orbitworkbench.shared.api.ApiException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -70,12 +71,15 @@ class InterviewReportServiceTest {
     @Mock
     private ModelGateway modelGateway;
 
+    @Mock
+    private NotificationService notificationService;
+
     private InterviewReportService service;
 
     @BeforeEach
     void setUp() {
         service = new InterviewReportService(sessionMapper, turnMapper, reportMapper,
-                connectionService, modelGateway, new ObjectMapper());
+                connectionService, modelGateway, new ObjectMapper(), notificationService);
     }
 
     @Test
@@ -100,6 +104,11 @@ class InterviewReportServiceTest {
                 any(), any(), any(), any(), any(), any(), any(), any());
         verify(sessionMapper).updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
                 eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any());
+        verify(notificationService).notify(
+                eq(com.orbitworkbench.notification.domain.NotificationEvent.INTERVIEW_REPORT_READY),
+                eq(7L), any(), any(),
+                eq(NotificationService.RESOURCE_INTERVIEW_SESSION), eq(21L),
+                eq("/interviews/21/report"), eq("INTERVIEW_REPORT_READY:21"));
     }
 
     @Test
@@ -116,6 +125,11 @@ class InterviewReportServiceTest {
                 "失败摘要应说明 JSON 结构问题，实际：" + reason.getValue());
         verify(reportMapper, never()).markReady(anyLong(), any(), any(), any(),
                 any(), any(), any(), any(), any(), any(), any(), any());
+        verify(notificationService).notify(
+                eq(com.orbitworkbench.notification.domain.NotificationEvent.INTERVIEW_REPORT_FAILED),
+                eq(7L), any(), any(),
+                eq(NotificationService.RESOURCE_INTERVIEW_SESSION), eq(21L),
+                eq("/interviews/21"), eq("INTERVIEW_REPORT_FAILED:21"));
     }
 
     @Test

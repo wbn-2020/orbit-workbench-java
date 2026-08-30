@@ -1,6 +1,8 @@
 package com.orbitworkbench.knowledge.application;
 
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.BuildResultResponse;
+import com.orbitworkbench.notification.application.NotificationService;
+import com.orbitworkbench.notification.domain.NotificationEvent;
 import com.orbitworkbench.project.application.ProjectVersionImportedEvent;
 import com.orbitworkbench.project.domain.ProjectRecord;
 import com.orbitworkbench.project.domain.ProjectVersionRecord;
@@ -30,10 +32,13 @@ public class KnowledgeBuildService {
 
     private final ProjectMapper projectMapper;
     private final KnowledgeService knowledgeService;
+    private final NotificationService notificationService;
 
-    public KnowledgeBuildService(ProjectMapper projectMapper, KnowledgeService knowledgeService) {
+    public KnowledgeBuildService(ProjectMapper projectMapper, KnowledgeService knowledgeService,
+                                 NotificationService notificationService) {
         this.projectMapper = projectMapper;
         this.knowledgeService = knowledgeService;
+        this.notificationService = notificationService;
     }
 
     @Async
@@ -51,7 +56,9 @@ public class KnowledgeBuildService {
             projectMapper.markKnowledgeReady(versionId, result.chunkCount(), now, now);
         } catch (RuntimeException exception) {
             log.warn("知识块自动构建失败，版本 id={}：{}", versionId, exception.toString());
-            projectMapper.markKnowledgeFailed(versionId, sanitizedError(exception), Instant.now());
+            String summary = sanitizedError(exception);
+            projectMapper.markKnowledgeFailed(versionId, summary, Instant.now());
+            notifyBuildFailed(event.userId(), event.projectId(), versionId, summary);
         }
     }
 
@@ -69,9 +76,23 @@ public class KnowledgeBuildService {
             projectMapper.markKnowledgeReady(versionId, result.chunkCount(), now, now);
             return result;
         } catch (RuntimeException exception) {
-            projectMapper.markKnowledgeFailed(versionId, sanitizedError(exception), Instant.now());
+            String summary = sanitizedError(exception);
+            projectMapper.markKnowledgeFailed(versionId, summary, Instant.now());
+            notifyBuildFailed(userId, projectId, versionId, summary);
             throw exception;
         }
+    }
+
+    private void notifyBuildFailed(Long userId, Long projectId, Long versionId, String summary) {
+        notificationService.notify(
+                NotificationEvent.KNOWLEDGE_BUILD_FAILED,
+                userId,
+                "项目知识块构建失败",
+                "该版本知识块构建未完成：" + summary,
+                NotificationService.RESOURCE_PROJECT_VERSION,
+                versionId,
+                "/projects/" + projectId,
+                "KNOWLEDGE_BUILD_FAILED:" + versionId);
     }
 
     private void requireVersion(Long userId, Long projectId, Long versionId) {

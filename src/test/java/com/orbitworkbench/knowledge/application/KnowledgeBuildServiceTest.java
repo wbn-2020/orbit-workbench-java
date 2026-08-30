@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.BuildResultResponse;
+import com.orbitworkbench.notification.application.NotificationService;
 import com.orbitworkbench.project.application.ProjectVersionImportedEvent;
 import com.orbitworkbench.project.domain.ProjectRecord;
 import com.orbitworkbench.project.domain.ProjectVersionRecord;
@@ -34,17 +35,19 @@ class KnowledgeBuildServiceTest {
     private ProjectMapper projectMapper;
     @Mock
     private KnowledgeService knowledgeService;
+    @Mock
+    private NotificationService notificationService;
 
     private KnowledgeBuildService service;
 
     @BeforeEach
     void setUp() {
-        service = new KnowledgeBuildService(projectMapper, knowledgeService);
+        service = new KnowledgeBuildService(projectMapper, knowledgeService, notificationService);
     }
 
     @Test
     void autoBuildRunsChunkBuildAndMarksReadyWhenClaimed() {
-        ProjectVersionImportedEvent event = new ProjectVersionImportedEvent(7L, 41L, 52L);
+        ProjectVersionImportedEvent event = new ProjectVersionImportedEvent(7L, 41L, 52L, 0);
         when(projectMapper.tryMarkKnowledgeBuilding(eq(52L), eq(List.of("PENDING")), any()))
                 .thenReturn(1);
         when(knowledgeService.build(7L, 41L, 52L)).thenReturn(new BuildResultResponse(9, 3));
@@ -59,7 +62,7 @@ class KnowledgeBuildServiceTest {
 
     @Test
     void autoBuildSkipsSilentlyWhenAnotherBuildAlreadyClaimedTheVersion() {
-        ProjectVersionImportedEvent event = new ProjectVersionImportedEvent(7L, 41L, 52L);
+        ProjectVersionImportedEvent event = new ProjectVersionImportedEvent(7L, 41L, 52L, 0);
         when(projectMapper.tryMarkKnowledgeBuilding(eq(52L), eq(List.of("PENDING")), any()))
                 .thenReturn(0);
 
@@ -72,7 +75,7 @@ class KnowledgeBuildServiceTest {
 
     @Test
     void autoBuildMarksFailedWithSummarizedErrorInsteadOfPropagating() {
-        ProjectVersionImportedEvent event = new ProjectVersionImportedEvent(7L, 41L, 52L);
+        ProjectVersionImportedEvent event = new ProjectVersionImportedEvent(7L, 41L, 52L, 0);
         when(projectMapper.tryMarkKnowledgeBuilding(eq(52L), eq(List.of("PENDING")), any()))
                 .thenReturn(1);
         when(knowledgeService.build(7L, 41L, 52L))
@@ -84,6 +87,11 @@ class KnowledgeBuildServiceTest {
         verify(projectMapper).markKnowledgeFailed(eq(52L), error.capture(), any());
         assertTrue(error.getValue().startsWith("IllegalStateException: 存储读取失败"));
         verify(projectMapper, never()).markKnowledgeReady(anyLong(), anyInt(), any(), any());
+        verify(notificationService).notify(
+                eq(com.orbitworkbench.notification.domain.NotificationEvent.KNOWLEDGE_BUILD_FAILED),
+                eq(7L), any(), any(),
+                eq(NotificationService.RESOURCE_PROJECT_VERSION), eq(52L),
+                eq("/projects/41"), eq("KNOWLEDGE_BUILD_FAILED:52"));
     }
 
     @Test

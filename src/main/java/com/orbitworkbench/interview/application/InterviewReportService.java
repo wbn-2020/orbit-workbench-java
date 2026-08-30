@@ -17,6 +17,8 @@ import com.orbitworkbench.interview.domain.ReportStatus;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewReportMapper;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewSessionMapper;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewTurnMapper;
+import com.orbitworkbench.notification.application.NotificationService;
+import com.orbitworkbench.notification.domain.NotificationEvent;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.PageResult;
@@ -73,19 +75,22 @@ public class InterviewReportService {
     private final AiConnectionService connectionService;
     private final ModelGateway modelGateway;
     private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
 
     public InterviewReportService(InterviewSessionMapper sessionMapper,
                                   InterviewTurnMapper turnMapper,
                                   InterviewReportMapper reportMapper,
                                   AiConnectionService connectionService,
                                   ModelGateway modelGateway,
-                                  ObjectMapper objectMapper) {
+                                  ObjectMapper objectMapper,
+                                  NotificationService notificationService) {
         this.sessionMapper = sessionMapper;
         this.turnMapper = turnMapper;
         this.reportMapper = reportMapper;
         this.connectionService = connectionService;
         this.modelGateway = modelGateway;
         this.objectMapper = objectMapper;
+        this.notificationService = notificationService;
     }
 
     public ReportStateResponse generate(Long userId, Long sessionId, Long connectionId) {
@@ -101,6 +106,15 @@ public class InterviewReportService {
             persistScoredReport(session, parseScoredReport(modelOutput));
         } catch (ApiException exception) {
             reportMapper.markFailed(session.getId(), exception.getMessage(), Instant.now());
+            notificationService.notify(
+                    NotificationEvent.INTERVIEW_REPORT_FAILED,
+                    session.getUserId(),
+                    "面试报告生成失败",
+                    "报告生成未完成，可稍后在报告页重试。",
+                    NotificationService.RESOURCE_INTERVIEW_SESSION,
+                    session.getId(),
+                    "/interviews/" + session.getId(),
+                    "INTERVIEW_REPORT_FAILED:" + session.getId());
             throw exception;
         }
         return new ReportStateResponse(true,
@@ -171,6 +185,16 @@ public class InterviewReportService {
         }
         sessionMapper.updateStatus(session.getId(), InterviewSessionStatus.COMPLETING,
                 InterviewSessionStatus.COMPLETED, null, null, now);
+        notificationService.notify(
+                NotificationEvent.INTERVIEW_REPORT_READY,
+                session.getUserId(),
+                "面试报告已生成",
+                "本场面试评分报告已就绪（总分 " + scored.totalScore() + "，建议 "
+                        + scored.hiringRecommendation() + "），点击查看分项点评与复习建议。",
+                NotificationService.RESOURCE_INTERVIEW_SESSION,
+                session.getId(),
+                "/interviews/" + session.getId() + "/report",
+                "INTERVIEW_REPORT_READY:" + session.getId());
     }
 
     private AiConnectionRuntimeConfig resolveConnection(Long connectionId) {

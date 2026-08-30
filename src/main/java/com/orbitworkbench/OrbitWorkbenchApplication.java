@@ -7,8 +7,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @EnableAsync
+@EnableScheduling
 @MapperScan({
         "com.orbitworkbench.aiconnection.infrastructure.mapper",
         "com.orbitworkbench.identity.infrastructure.mapper",
@@ -17,6 +19,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
         "com.orbitworkbench.jobapplication.infrastructure.mapper",
         "com.orbitworkbench.jobprofile.infrastructure.mapper",
         "com.orbitworkbench.knowledge.infrastructure.mapper",
+        "com.orbitworkbench.notification.infrastructure.mapper",
         "com.orbitworkbench.project.infrastructure.mapper",
         "com.orbitworkbench.studyplan.infrastructure.mapper",
         "com.orbitworkbench.workspace.infrastructure.mapper"

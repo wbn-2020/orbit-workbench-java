@@ -18,6 +18,8 @@ public interface StudyTaskMapper {
             @Param("userId") Long userId,
             @Param("status") StudyTaskStatus status);
 
+    List<StudyTaskRecord> listDueActive(@Param("today") LocalDate today);
+
     int updateStatus(
             @Param("id") Long id,
             @Param("userId") Long userId,

@@ -235,7 +235,7 @@ public class ProjectService {
                 mapper.insertFile(file);
             }
             eventPublisher.publishEvent(new ProjectVersionImportedEvent(
-                    project.getUserId(), project.getId(), version.getId()));
+                    project.getUserId(), project.getId(), version.getId(), scan.failedCount()));
         } catch (IOException exception) {
             throw validation("无法读取项目导入文件");
         } catch (RuntimeException exception) {
