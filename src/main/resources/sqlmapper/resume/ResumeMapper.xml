@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.resume.infrastructure.mapper.ResumeMapper">
+
+    <resultMap id="ResumeDocumentMap" type="com.orbitworkbench.resume.domain.ResumeDocumentRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="title" column="title"/>
+        <result property="activeVersionId" column="active_version_id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="ResumeVersionMap" type="com.orbitworkbench.resume.domain.ResumeVersionRecord">
+        <id property="id" column="id"/>
+        <result property="resumeId" column="resume_id"/>
+        <result property="versionNumber" column="version_number"/>
+        <result property="status" column="status"/>
+        <result property="sectionsJson" column="sections_json"/>
+        <result property="sourceSnapshotJson" column="source_snapshot_json"/>
+        <result property="changeSummary" column="change_summary"/>
+        <result property="pdfStorageRef" column="pdf_storage_ref"/>
+        <result property="pdfGeneratedAt" column="pdf_generated_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="documentColumns">
+        id, user_id, title, active_version_id, created_at, updated_at
+    </sql>
+
+    <sql id="versionColumns">
+        id, resume_id, version_number, status, sections_json, source_snapshot_json,
+        change_summary, pdf_storage_ref, pdf_generated_at, created_at, updated_at
+    </sql>
+
+    <insert id="insertDocument" parameterType="com.orbitworkbench.resume.domain.ResumeDocumentRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO resume_document(user_id, title, active_version_id, created_at, updated_at)
+        VALUES(#{userId}, #{title}, #{activeVersionId}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="findDocumentByUser" resultMap="ResumeDocumentMap">
+        SELECT <include refid="documentColumns"/>
+        FROM resume_document
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="findDocumentByUserForUpdate" resultMap="ResumeDocumentMap">
+        SELECT <include refid="documentColumns"/>
+        FROM resume_document
+        WHERE user_id = #{userId}
+        FOR UPDATE
+    </select>
+
+    <update id="updateDocumentMeta">
+        UPDATE resume_document
+        SET title = #{title},
+            active_version_id = #{activeVersionId},
+            updated_at = #{updatedAt}
+        WHERE id = #{documentId} AND user_id = #{userId}
+    </update>
+
+    <insert id="insertVersion" parameterType="com.orbitworkbench.resume.domain.ResumeVersionRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO resume_version(
+            resume_id, version_number, status, sections_json, source_snapshot_json,
+            change_summary, pdf_storage_ref, pdf_generated_at, created_at, updated_at
+        )
+        VALUES(
+            #{resumeId}, #{versionNumber}, #{status}, #{sectionsJson}, #{sourceSnapshotJson},
+            #{changeSummary}, #{pdfStorageRef}, #{pdfGeneratedAt}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findVersion" resultMap="ResumeVersionMap">
+        SELECT <include refid="versionColumns"/>
+        FROM resume_version
+        WHERE id = #{versionId} AND resume_id = #{resumeId}
+    </select>
+
+    <select id="listVersions" resultMap="ResumeVersionMap">
+        SELECT <include refid="versionColumns"/>
+        FROM resume_version
+        WHERE resume_id = #{resumeId}
+        ORDER BY version_number DESC
+    </select>
+
+    <select id="findDraft" resultMap="ResumeVersionMap">
+        SELECT <include refid="versionColumns"/>
+        FROM resume_version
+        WHERE resume_id = #{resumeId} AND status = 'DRAFT'
+        ORDER BY version_number DESC
+        LIMIT 1
+    </select>
+
+    <select id="findDraftForUpdate" resultMap="ResumeVersionMap">
+        SELECT <include refid="versionColumns"/>
+        FROM resume_version
+        WHERE resume_id = #{resumeId} AND status = 'DRAFT'
+        ORDER BY version_number DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <select id="nextVersionNumber" resultType="int">
+        SELECT COALESCE(MAX(version_number), 0) + 1
+        FROM resume_version
+        WHERE resume_id = #{resumeId}
+    </select>
+
+    <update id="updateDraftSections">
+        UPDATE resume_version
+        SET sections_json = #{sectionsJson},
+            change_summary = #{changeSummary},
+            updated_at = #{updatedAt}
+        WHERE id = #{versionId}
+          AND resume_id = #{resumeId}
+          AND status = 'DRAFT'
+          AND updated_at = #{expectedUpdatedAt}
+    </update>
+
+    <update id="finalizeDraft">
+        UPDATE resume_version
+        SET status = 'FINAL',
+            source_snapshot_json = #{sourceSnapshotJson},
+            change_summary = #{changeSummary},
+            updated_at = #{updatedAt}
+        WHERE id = #{versionId}
+          AND resume_id = #{resumeId}
+          AND status = 'DRAFT'
+    </update>
+
+    <update id="updatePdfPointer">
+        UPDATE resume_version
+        SET pdf_storage_ref = #{storageRef},
+            pdf_generated_at = #{generatedAt}
+        WHERE id = #{versionId} AND resume_id = #{resumeId}
+    </update>
+</mapper>

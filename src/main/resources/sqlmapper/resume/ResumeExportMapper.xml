@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.resume.infrastructure.mapper.ResumeExportMapper">
+
+    <resultMap id="ResumeExportMap" type="com.orbitworkbench.resume.domain.ResumeExportRecord">
+        <id property="id" column="id"/>
+        <result property="resumeVersionId" column="resume_version_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="storageRef" column="storage_ref"/>
+        <result property="contentHash" column="content_hash"/>
+        <result property="sizeBytes" column="size_bytes"/>
+        <result property="fontName" column="font_name"/>
+        <result property="status" column="status"/>
+        <result property="failureReason" column="failure_reason"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <resultMap id="ResumeExportSummaryMap" type="com.orbitworkbench.resume.domain.ResumeExportSummary">
+        <result property="resumeVersionId" column="resume_version_id"/>
+        <result property="succeededCount" column="succeeded_count"/>
+        <result property="lastSucceededAt" column="last_succeeded_at"/>
+    </resultMap>
+
+    <sql id="exportColumns">
+        id, resume_version_id, user_id, storage_ref, content_hash, size_bytes,
+        font_name, status, failure_reason, created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.resume.domain.ResumeExportRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO resume_export_record(
+            resume_version_id, user_id, storage_ref, content_hash, size_bytes,
+            font_name, status, failure_reason, created_at
+        )
+        VALUES(
+            #{resumeVersionId}, #{userId}, #{storageRef}, #{contentHash}, #{sizeBytes},
+            #{fontName}, #{status}, #{failureReason}, #{createdAt}
+        )
+    </insert>
+
+    <select id="listByVersion" resultMap="ResumeExportMap">
+        SELECT <include refid="exportColumns"/>
+        FROM resume_export_record
+        WHERE resume_version_id = #{versionId} AND user_id = #{userId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+    <select id="summarizeByResume" resultMap="ResumeExportSummaryMap">
+        SELECT e.resume_version_id,
+               SUM(CASE WHEN e.status = 'SUCCEEDED' THEN 1 ELSE 0 END) AS succeeded_count,
+               MAX(CASE WHEN e.status = 'SUCCEEDED' THEN e.created_at END) AS last_succeeded_at
+        FROM resume_export_record e
+        JOIN resume_version v ON v.id = e.resume_version_id
+        WHERE v.resume_id = #{resumeId} AND e.user_id = #{userId}
+        GROUP BY e.resume_version_id
+    </select>
+</mapper>
