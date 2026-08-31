@@ -12,7 +12,5 @@ public interface WorkspaceMapper {
     int update(WorkspaceRecord workspace);
     int softDelete(@Param("id") Long id);
     int countAll();
-    int countTasks(@Param("workspaceId") Long workspaceId);
-    int countDocuments(@Param("workspaceId") Long workspaceId);
-    int countArtifacts(@Param("workspaceId") Long workspaceId);
+    int countProjects(@Param("workspaceId") Long workspaceId);
 }

@@ -48,13 +48,7 @@
     <select id="countAll" resultType="int">
         SELECT COUNT(*) FROM workspace WHERE status = 'ACTIVE'
     </select>
-    <select id="countTasks" resultType="int">
-        SELECT COUNT(*) FROM task WHERE workspace_id = #{workspaceId}
-    </select>
-    <select id="countDocuments" resultType="int">
-        SELECT COUNT(*) FROM document WHERE workspace_id = #{workspaceId}
-    </select>
-    <select id="countArtifacts" resultType="int">
-        SELECT COUNT(*) FROM artifact WHERE workspace_id = #{workspaceId}
+    <select id="countProjects" resultType="int">
+        SELECT COUNT(*) FROM project WHERE workspace_id = #{workspaceId}
     </select>
 </mapper>

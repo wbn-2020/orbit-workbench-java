@@ -71,17 +71,9 @@ public class WorkspaceService {
             throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
                     "不能删除唯一的工作空间");
         }
-        if (mapper.countTasks(id) > 0) {
+        if (mapper.countProjects(id) > 0) {
             throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
-                    "存在任务的工作空间不能删除");
-        }
-        if (mapper.countDocuments(id) > 0) {
-            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
-                    "存在资料的工作空间不能删除");
-        }
-        if (mapper.countArtifacts(id) > 0) {
-            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
-                    "存在成果的工作空间不能删除");
+                    "存在项目资料的工作空间不能删除");
         }
         if (mapper.softDelete(id) != 1) {
             throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,

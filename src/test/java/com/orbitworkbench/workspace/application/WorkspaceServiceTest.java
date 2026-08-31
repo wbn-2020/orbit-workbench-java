@@ -66,4 +66,39 @@ class WorkspaceServiceTest {
         verify(mapper, never()).countAll();
         verify(mapper, never()).softDelete(1L);
     }
+
+    @Test
+    void deleteRejectsWorkspaceStillHoldingProjectMaterials() {
+        WorkspaceRecord workspace = ordinaryWorkspace(7L);
+        when(mapper.findByIdForUpdate(7L)).thenReturn(workspace);
+        when(mapper.countAll()).thenReturn(2);
+        when(mapper.countProjects(7L)).thenReturn(1);
+
+        ApiException exception = assertThrows(
+                ApiException.class, () -> service.delete(7L));
+
+        assertEquals("存在项目资料的工作空间不能删除", exception.getMessage());
+        verify(mapper, never()).softDelete(7L);
+    }
+
+    @Test
+    void deleteSoftDeletesWorkspaceWithoutProjectMaterials() {
+        WorkspaceRecord workspace = ordinaryWorkspace(7L);
+        when(mapper.findByIdForUpdate(7L)).thenReturn(workspace);
+        when(mapper.countAll()).thenReturn(2);
+        when(mapper.countProjects(7L)).thenReturn(0);
+        when(mapper.softDelete(7L)).thenReturn(1);
+
+        service.delete(7L);
+
+        verify(mapper).softDelete(7L);
+    }
+
+    private WorkspaceRecord ordinaryWorkspace(long id) {
+        WorkspaceRecord workspace = new WorkspaceRecord();
+        workspace.setId(id);
+        workspace.setDefaultKey(null);
+        workspace.setStatus("ACTIVE");
+        return workspace;
+    }
 }
