@@ -25,6 +25,8 @@
         <mockwebserver.version>4.12.0</mockwebserver.version>
         <commons-csv.version>1.11.0</commons-csv.version>
         <apache-poi.version>5.4.1</apache-poi.version>
+        <pdfbox.version>3.0.3</pdfbox.version>
+        <spring-ai.version>1.0.1</spring-ai.version>
     </properties>
 
     <dependencies>
@@ -120,13 +122,13 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>
-            <version>1.0.1</version>
+            <version>${spring-ai.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
-            <version>3.0.3</version>
+            <version>${pdfbox.version}</version>
         </dependency>
     </dependencies>
 
@@ -143,6 +145,31 @@
                     <release>${java.version}</release>
                     <parameters>true</parameters>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-build-baseline</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[21,22)</version>
+                                    <message>后端仅在 JDK 21.x 上验证，请使用 Amazon Corretto 21 或同等级别</message>
+                                </requireJavaVersion>
+                                <requireMavenVersion>
+                                    <version>[3.9.9,4.0.0)</version>
+                                    <message>构建基线要求 Maven 3.9.9 及以上 3.x 版本</message>
+                                </requireMavenVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
