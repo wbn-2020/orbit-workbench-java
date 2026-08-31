@@ -17,6 +17,7 @@ import com.orbitworkbench.jobapplication.infrastructure.mapper.ApplicationEventM
 import com.orbitworkbench.jobapplication.infrastructure.mapper.JobApplicationMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -129,6 +130,105 @@ class JobApplicationServiceTest {
         record.setStage(stage);
         record.setArchived(false);
         return record;
+    }
+
+    @Test
+    void createRejectsUnknownStageAsBadRequest() {
+        ApiException exception = assertThrows(ApiException.class, () -> service.create(7L,
+                new CreateRequest("美团", "后端开发", null, null, null, null,
+                        "BOGUS_STAGE", null, null, null)));
+
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, exception.getStatus());
+        assertEquals("stage 取值不合法", exception.getMessage());
+        verify(mapper, org.mockito.Mockito.never()).insert(any(JobApplicationRecord.class));
+    }
+
+    @Test
+    void advanceRejectsUnknownStageAsBadRequest() {
+        when(mapper.findById(41L)).thenReturn(record(ApplicationStage.APPLIED));
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.advance(7L, 41L, new StageRequest("HRED", null)));
+
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, exception.getStatus());
+        verify(mapper, org.mockito.Mockito.never())
+                .updateStage(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void advanceConflictWritesNoStageTrail() {
+        when(mapper.findById(41L)).thenReturn(record(ApplicationStage.APPLIED));
+        when(mapper.updateStage(eq(41L), eq(7L), eq(ApplicationStage.APPLIED),
+                eq(ApplicationStage.INTERVIEWING), any(), any())).thenReturn(0);
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.advance(7L, 41L, new StageRequest("INTERVIEWING", "一面")));
+
+        assertEquals("投递记录已变化，请刷新后重试", exception.getMessage());
+        verify(eventMapper, org.mockito.Mockito.never()).insert(any(ApplicationEventRecord.class));
+    }
+
+    @Test
+    void archivingWritesTrailWithReadableDetail() {
+        JobApplicationRecord record = record(ApplicationStage.OFFER);
+        when(mapper.findById(41L)).thenReturn(record);
+        when(mapper.updateArchived(eq(41L), eq(7L), eq(true), any())).thenReturn(1);
+
+        service.setArchived(7L, 41L, true);
+
+        ArgumentCaptor<ApplicationEventRecord> captor =
+                ArgumentCaptor.forClass(ApplicationEventRecord.class);
+        verify(eventMapper).insert(captor.capture());
+        assertEquals("ARCHIVED", captor.getValue().getEventType());
+        assertEquals("归档", captor.getValue().getDetail());
+    }
+
+    @Test
+    void unarchivingRecordsReadableDetail() {
+        JobApplicationRecord record = record(ApplicationStage.OFFER);
+        record.setArchived(true);
+        when(mapper.findById(41L)).thenReturn(record);
+        when(mapper.updateArchived(eq(41L), eq(7L), eq(false), any())).thenReturn(1);
+
+        service.setArchived(7L, 41L, false);
+
+        ArgumentCaptor<ApplicationEventRecord> captor =
+                ArgumentCaptor.forClass(ApplicationEventRecord.class);
+        verify(eventMapper).insert(captor.capture());
+        assertEquals("取消归档", captor.getValue().getDetail());
+    }
+
+    @Test
+    void deleteRejectedWhenRowAlreadyGone() {
+        when(mapper.findById(41L)).thenReturn(record(ApplicationStage.APPLIED));
+        when(mapper.delete(41L, 7L)).thenReturn(0);
+
+        assertThrows(ApiException.class, () -> service.delete(7L, 41L));
+    }
+
+    @Test
+    void deleteRejectedForForeignRecord() {
+        JobApplicationRecord foreign = record(ApplicationStage.APPLIED);
+        foreign.setUserId(8L);
+        when(mapper.findById(41L)).thenReturn(foreign);
+
+        assertThrows(ApiException.class, () -> service.delete(7L, 41L));
+        verify(mapper, org.mockito.Mockito.never()).delete(any(), any());
+    }
+
+    @Test
+    void listAggregatesStageCounts() {
+        when(mapper.listByUser(7L, false)).thenReturn(List.of(
+                record(ApplicationStage.APPLIED), record(ApplicationStage.INTERVIEWING),
+                record(ApplicationStage.INTERVIEWING), record(ApplicationStage.OFFER)));
+
+        var response = service.list(7L, false);
+
+        assertEquals(4, response.items().size());
+        assertEquals(1, response.stages().applied());
+        assertEquals(2, response.stages().interviewing());
+        assertEquals(1, response.stages().offer());
+        assertEquals(0, response.stages().closed());
     }
 
     private CreateRequest request() {

@@ -179,6 +179,17 @@ class StudyTaskServiceTest {
         return record;
     }
 
+    @Test
+    void createRejectsUnknownPriorityAsBadRequest() {
+        ApiException exception = assertThrows(ApiException.class, () -> service.create(7L,
+                new CreateTaskRequest("复盘 Redis 双写一致性", "Redis", "REVIEW", "URGENT", 30,
+                        LocalDate.of(2026, 9, 1))));
+
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, exception.getStatus());
+        assertEquals("priority 取值不合法", exception.getMessage());
+        verify(mapper, never()).insert(any(StudyTaskRecord.class));
+    }
+
     private CreateTaskRequest request() {
         return new CreateTaskRequest(
                 " 复盘 Redis 双写一致性 ",

@@ -300,6 +300,31 @@ class InterviewQuestionServiceTest {
         }).when(turnMapper).insert(any(InterviewTurnRecord.class));
     }
 
+    @Test
+    void nextRejectsUnknownTurnTypeAsBadRequestWithoutCallingModel() {
+        when(sessionMapper.findById(21L)).thenReturn(runningSession());
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.next(7L, 21L, new NextQuestionRequest("BOTH", null)));
+
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, exception.getStatus());
+        assertEquals(ErrorCode.INVALID_REQUEST, exception.getErrorCode());
+        assertEquals("turnType 取值不合法", exception.getMessage());
+        verify(aiScenarioExecution, never()).executeText(any(), any(), any(), any(), any(),
+                anyInt(), any());
+        verify(turnMapper, never()).insert(any(InterviewTurnRecord.class));
+    }
+
+    @Test
+    void streamNextRejectsUnknownTurnTypeAsBadRequest() {
+        when(sessionMapper.findById(21L)).thenReturn(runningSession());
+
+        assertThrows(ApiException.class,
+                () -> service.streamNext(7L, 21L, new NextQuestionRequest("main", null)));
+
+        verify(modelGateway, never()).stream(any());
+    }
+
     private InterviewTurnRecord savedTurn(Long id, InterviewTurnType type, String question) {
         InterviewTurnRecord record = turn(type, question);
         record.setId(id);

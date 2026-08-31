@@ -90,7 +90,23 @@ public class ProjectImportScanner {
                     continue;
                 }
 
-                byte[] content = readLimited(zip, MAX_ENTRY_BYTES);
+                byte[] content;
+                try {
+                    content = readLimited(zip, MAX_ENTRY_BYTES);
+                } catch (ApiException exception) {
+                    if (exception.getStatus() != HttpStatus.PAYLOAD_TOO_LARGE) {
+                        throw exception;
+                    }
+                    // 流式读取时条目的声明大小不可信（恒为 -1），只能边读边限；
+                    // 超限文件记 FAILED 并计入总量，避免单个文件打断整批导入。
+                    parsedBytes += MAX_ENTRY_BYTES;
+                    if (parsedBytes > MAX_PARSED_BYTES) {
+                        throw validation("压缩包可解析文本总量超过 20 MB");
+                    }
+                    files.add(ScannedFile.failed(relativePath, MAX_ENTRY_BYTES,
+                            mediaType(relativePath), "文件超过单文件 2 MB 限制"));
+                    continue;
+                }
                 parsedBytes += content.length;
                 if (parsedBytes > MAX_PARSED_BYTES) {
                     throw validation("压缩包可解析文本总量超过 20 MB");
@@ -105,7 +121,7 @@ public class ProjectImportScanner {
             throw validation("无法读取项目压缩包");
         }
         if (fileCount == 0) {
-            throw validation("压缩包中没有可扫描的文件");
+            throw validation("ZIP 压缩包格式无效或其中没有可扫描的文件");
         }
         return new ScanResult("ZIP", List.copyOf(files));
     }

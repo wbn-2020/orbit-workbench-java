@@ -13,6 +13,7 @@ import com.orbitworkbench.jobapplication.infrastructure.mapper.ApplicationEventM
 import com.orbitworkbench.jobapplication.infrastructure.mapper.JobApplicationMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
+import com.orbitworkbench.shared.api.RequestEnums;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -46,7 +47,7 @@ public class JobApplicationService {
         record.setSource(normalize(request.source()));
         record.setApplyDate(request.applyDate());
         record.setInterviewDate(request.interviewDate());
-        record.setStage(ApplicationStage.valueOf(request.stage()));
+        record.setStage(RequestEnums.parse(ApplicationStage.class, request.stage(), "stage"));
         record.setSalaryNote(normalize(request.salaryNote()));
         record.setContact(normalize(request.contact()));
         record.setNote(normalize(request.note()));
@@ -88,7 +89,8 @@ public class JobApplicationService {
         record.setApplyDate(request.applyDate());
         record.setInterviewDate(request.interviewDate());
         record.setResult(request.result() == null ? null
-                : com.orbitworkbench.jobapplication.domain.ApplicationResult.valueOf(request.result()));
+                : RequestEnums.parse(com.orbitworkbench.jobapplication.domain.ApplicationResult.class,
+                        request.result(), "result"));
         record.setSalaryNote(normalize(request.salaryNote()));
         record.setContact(normalize(request.contact()));
         record.setNote(normalize(request.note()));
@@ -102,7 +104,7 @@ public class JobApplicationService {
     @Transactional
     public ApplicationResponse advance(Long userId, Long id, StageRequest request) {
         JobApplicationRecord record = owned(userId, id);
-        ApplicationStage target = ApplicationStage.valueOf(request.stage());
+        ApplicationStage target = RequestEnums.parse(ApplicationStage.class, request.stage(), "stage");
         if (target == record.getStage()) {
             throw conflict("阶段未变化：当前已是 " + target);
         }

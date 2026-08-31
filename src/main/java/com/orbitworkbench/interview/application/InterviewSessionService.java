@@ -29,6 +29,7 @@ import com.orbitworkbench.project.domain.ProjectVersionRecord;
 import com.orbitworkbench.project.infrastructure.mapper.ProjectMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
+import com.orbitworkbench.shared.api.RequestEnums;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -201,7 +202,8 @@ public class InterviewSessionService {
         requireRunning(session);
         requireTurnBudget(session);
 
-        InterviewTurnType turnType = InterviewTurnType.valueOf(request.turnType());
+        InterviewTurnType turnType = RequestEnums.parse(InterviewTurnType.class,
+                request.turnType(), "turnType");
         if (turnType == InterviewTurnType.MAIN) {
             int mainCount = turnMapper.countBySessionAndType(session.getId(), InterviewTurnType.MAIN);
             if (mainCount >= session.getQuestionLimit()) {
@@ -233,7 +235,9 @@ public class InterviewSessionService {
             throw conflict("该问答已提交过回答");
         }
         int updated = turnMapper.submitAnswer(turn.getId(), request.answer(),
-                AnswerSource.valueOf(request.answerSource()).name(), Instant.now());
+                RequestEnums.parse(AnswerSource.class, request.answerSource(), "answerSource")
+                        .name(),
+                Instant.now());
         if (updated != 1) {
             throw conflict("回答状态已变化，请刷新后重试");
         }

@@ -21,6 +21,7 @@ import com.orbitworkbench.interview.infrastructure.mapper.InterviewSessionMapper
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewTurnMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
+import com.orbitworkbench.shared.api.RequestEnums;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -74,7 +75,8 @@ public class InterviewQuestionService {
     public TurnResponse next(Long userId, Long sessionId, NextQuestionRequest request) {
         InterviewSessionRecord session = requireOwned(userId, sessionId);
         requireRunning(session);
-        InterviewTurnType turnType = InterviewTurnType.valueOf(request.turnType());
+        InterviewTurnType turnType = RequestEnums.parse(InterviewTurnType.class,
+                request.turnType(), "turnType");
         checkBudget(session, turnType);
         if (turnType == InterviewTurnType.FOLLOW_UP) {
             requireLastAnswered(session.getId());
@@ -107,7 +109,8 @@ public class InterviewQuestionService {
                                                     NextQuestionRequest request) {
         InterviewSessionRecord session = requireOwned(userId, sessionId);
         requireRunning(session);
-        InterviewTurnType turnType = InterviewTurnType.valueOf(request.turnType());
+        InterviewTurnType turnType = RequestEnums.parse(InterviewTurnType.class,
+                request.turnType(), "turnType");
         checkBudget(session, turnType);
         if (turnType == InterviewTurnType.FOLLOW_UP) {
             requireLastAnswered(session.getId());

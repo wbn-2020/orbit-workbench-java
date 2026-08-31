@@ -425,4 +425,115 @@ class InterviewSessionServiceTest {
         record.setConfirmationStatus(status);
         return record;
     }
+
+    @Test
+    void pauseTransitionsRunningToPausedWithoutTouchingTimestamps() {
+        InterviewSessionRecord running = session(InterviewSessionStatus.RUNNING);
+        when(sessionMapper.findById(21L)).thenReturn(running, session(InterviewSessionStatus.PAUSED));
+        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.RUNNING),
+                eq(InterviewSessionStatus.PAUSED), isNull(), isNull(), any())).thenReturn(1);
+
+        SessionResponse response = service.pause(7L, 21L);
+
+        assertEquals("PAUSED", response.status());
+        verify(sessionMapper).updateStatus(eq(21L), eq(InterviewSessionStatus.RUNNING),
+                eq(InterviewSessionStatus.PAUSED), isNull(), isNull(), any());
+    }
+
+    @Test
+    void pauseRejectsReadySession() {
+        when(sessionMapper.findById(21L)).thenReturn(session(InterviewSessionStatus.READY));
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.pause(7L, 21L));
+
+        assertEquals("状态不允许该操作：当前 READY，该操作要求 RUNNING，目标 PAUSED",
+                exception.getMessage());
+        verify(sessionMapper, never()).updateStatus(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void resumeTransitionsPausedToRunning() {
+        when(sessionMapper.findById(21L)).thenReturn(
+                session(InterviewSessionStatus.PAUSED), session(InterviewSessionStatus.RUNNING));
+        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.PAUSED),
+                eq(InterviewSessionStatus.RUNNING), isNull(), isNull(), any())).thenReturn(1);
+
+        SessionResponse response = service.resume(7L, 21L);
+
+        assertEquals("RUNNING", response.status());
+    }
+
+    @Test
+    void resumeRejectsRunningSession() {
+        when(sessionMapper.findById(21L)).thenReturn(session(InterviewSessionStatus.RUNNING));
+
+        assertThrows(ApiException.class, () -> service.resume(7L, 21L));
+        verify(sessionMapper, never()).updateStatus(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void cancelFromPausedMarksSessionCancelledWithEndedAt() {
+        when(sessionMapper.findById(21L)).thenReturn(
+                session(InterviewSessionStatus.PAUSED), session(InterviewSessionStatus.CANCELLED));
+        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.PAUSED),
+                eq(InterviewSessionStatus.CANCELLED), isNull(), any(), any())).thenReturn(1);
+
+        SessionResponse response = service.cancel(7L, 21L);
+
+        assertEquals("CANCELLED", response.status());
+        verify(sessionMapper).updateStatus(eq(21L), eq(InterviewSessionStatus.PAUSED),
+                eq(InterviewSessionStatus.CANCELLED), isNull(), any(), any());
+    }
+
+    @Test
+    void cancelRejectsRunningSession() {
+        when(sessionMapper.findById(21L)).thenReturn(session(InterviewSessionStatus.RUNNING));
+
+        assertThrows(ApiException.class, () -> service.cancel(7L, 21L));
+        verify(sessionMapper, never()).updateStatus(anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void endIsAllowedFromPaused() {
+        when(sessionMapper.findById(21L)).thenReturn(
+                session(InterviewSessionStatus.PAUSED), session(InterviewSessionStatus.COMPLETING));
+        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.PAUSED),
+                eq(InterviewSessionStatus.COMPLETING), isNull(), any(), any())).thenReturn(1);
+
+        SessionResponse response = service.end(7L, 21L);
+
+        assertEquals("COMPLETING", response.status());
+        verify(reportMapper).insert(any(InterviewReportRecord.class));
+    }
+
+    @Test
+    void transitionRejectsConcurrentStatusChange() {
+        when(sessionMapper.findById(21L)).thenReturn(session(InterviewSessionStatus.RUNNING));
+        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.RUNNING),
+                eq(InterviewSessionStatus.PAUSED), isNull(), isNull(), any())).thenReturn(0);
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.pause(7L, 21L));
+
+        assertEquals("会话状态已变化，请刷新后重试", exception.getMessage());
+    }
+
+    @Test
+    void endRejectsConcurrentStatusChangeAndCreatesNoReport() {
+        when(sessionMapper.findById(21L)).thenReturn(session(InterviewSessionStatus.RUNNING));
+        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.RUNNING),
+                eq(InterviewSessionStatus.COMPLETING), isNull(), any(), any())).thenReturn(0);
+
+        assertThrows(ApiException.class, () -> service.end(7L, 21L));
+
+        verify(reportMapper, never()).insert(any(InterviewReportRecord.class));
+    }
+
+    @Test
+    void questionAndAnswerRejectedOnCancelledSession() {
+        when(sessionMapper.findById(21L)).thenReturn(session(InterviewSessionStatus.CANCELLED));
+
+        assertThrows(ApiException.class,
+                () -> service.addTurn(7L, 21L, new AddTurnRequest("MAIN", "问题")));
+        verify(turnMapper, never()).insert(any(InterviewTurnRecord.class));
+    }
 }
