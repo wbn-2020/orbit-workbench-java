@@ -69,8 +69,9 @@ public class ResumeExportService {
                 ResumeExportPreflight.withSanitizedText(stored));
         PreflightResponse check = preflight.evaluate(renderable);
         if (!check.ready()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
-                    "导出前校验未通过：" + String.join("；", check.blockers()));
+            String reason = "导出前校验未通过：" + String.join("；", check.blockers());
+            recorder.recordFailure(versionId, userId, null, reason, Instant.now());
+            throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED, reason);
         }
 
         Rendered rendered;

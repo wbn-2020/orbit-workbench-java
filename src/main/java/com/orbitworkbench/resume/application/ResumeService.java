@@ -207,10 +207,12 @@ public class ResumeService {
         if (profile != null) {
             addField(basic, "期望岗位", profile.getTargetRole(), ResumeSourceType.JOB_PROFILE,
                     profile.getId(), "求职档案");
+            addField(basic, "经验档位", experienceBandLabel(profile.getTargetExperienceBand()),
+                    ResumeSourceType.JOB_PROFILE, profile.getId(), "求职档案");
             addField(basic, "目标公司", profile.getTargetCompany(), ResumeSourceType.JOB_PROFILE,
                     profile.getId(), "求职档案");
-            addField(basic, "职业阶段", profile.getCareerStage(), ResumeSourceType.JOB_PROFILE,
-                    profile.getId(), "求职档案");
+            addField(basic, "职业阶段", careerStageLabel(profile.getCareerStage()),
+                    ResumeSourceType.JOB_PROFILE, profile.getId(), "求职档案");
             LocalDate interviewDate = profile.getTargetInterviewDate();
             addField(basic, "目标面试时间", interviewDate == null ? null : interviewDate.toString(),
                     ResumeSourceType.JOB_PROFILE, profile.getId(), "求职档案");
@@ -256,6 +258,34 @@ public class ResumeService {
                 new Section(ResumeSectionKey.PROJECT_EXPERIENCE, renumber(projects)),
                 new Section(ResumeSectionKey.SKILLS, renumber(skills)));
         return new Model(ResumeSections.SCHEMA_VERSION, sections);
+    }
+
+    /** 枚举码不得出现在简历正文与导出 PDF 里；未知取值原样保留，避免丢数据。 */
+    private static String careerStageLabel(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        return switch (raw) {
+            case "GRADUATE" -> "应届生";
+            case "CAREER_TRANSITION" -> "转行";
+            case "JOB_CHANGE" -> "在职跳槽";
+            default -> raw;
+        };
+    }
+
+    private static String experienceBandLabel(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        return switch (raw) {
+            case "GRADUATE" -> "应届";
+            case "ONE_TO_THREE_YEARS" -> "1-3 年";
+            case "THREE_TO_FIVE_YEARS" -> "3-5 年";
+            case "FIVE_PLUS_YEARS" -> "5 年以上";
+            // CUSTOM 没有自由文本列可依据，宁可不带入也不把枚举码写进简历。
+            case "CUSTOM" -> null;
+            default -> raw;
+        };
     }
 
     private void addField(List<Item> target, String label, String value, ResumeSourceType type,
