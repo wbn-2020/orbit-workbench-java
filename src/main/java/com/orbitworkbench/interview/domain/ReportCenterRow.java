@@ -1,12 +1,31 @@
 package com.orbitworkbench.interview.domain;
 
+import java.io.Serializable;
 import java.time.Instant;
 
-public class InterviewReportRecord {
+/**
+ * 报告中心的读模型（14 §5）：一份报告 join 它所属会话的上下文。
+ * 列表、趋势和详情共用这一行结构，归属由 SQL 里的 {@code s.user_id} 保证。
+ */
+public class ReportCenterRow implements Serializable {
 
-    private Long id;
+    private static final long serialVersionUID = 1L;
+
+    private Long reportId;
     private Long sessionId;
-    private ReportStatus status;
+    private String sessionTitle;
+    private String topicMode;
+    private String form;
+    private String round;
+    private String targetRole;
+    private String targetExperienceBand;
+    private Long interviewerId;
+    private String interviewerName;
+    private String sessionStatus;
+    private String aiModelSnapshot;
+    private Instant endedAt;
+    private Instant scheduledAt;
+    private String reportStatus;
     private Integer totalScore;
     private String dimensionScoresJson;
     private String hiringRecommendation;
@@ -21,14 +40,39 @@ public class InterviewReportRecord {
     private Integer retryCount;
     private Instant generatedAt;
     private Instant createdAt;
-    private Instant updatedAt;
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public Long getReportId() { return reportId; }
+    public void setReportId(Long reportId) { this.reportId = reportId; }
     public Long getSessionId() { return sessionId; }
     public void setSessionId(Long sessionId) { this.sessionId = sessionId; }
-    public ReportStatus getStatus() { return status; }
-    public void setStatus(ReportStatus status) { this.status = status; }
+    public String getSessionTitle() { return sessionTitle; }
+    public void setSessionTitle(String sessionTitle) { this.sessionTitle = sessionTitle; }
+    public String getTopicMode() { return topicMode; }
+    public void setTopicMode(String topicMode) { this.topicMode = topicMode; }
+    public String getForm() { return form; }
+    public void setForm(String form) { this.form = form; }
+    public String getRound() { return round; }
+    public void setRound(String round) { this.round = round; }
+    public String getTargetRole() { return targetRole; }
+    public void setTargetRole(String targetRole) { this.targetRole = targetRole; }
+    public String getTargetExperienceBand() { return targetExperienceBand; }
+    public void setTargetExperienceBand(String targetExperienceBand) {
+        this.targetExperienceBand = targetExperienceBand;
+    }
+    public Long getInterviewerId() { return interviewerId; }
+    public void setInterviewerId(Long interviewerId) { this.interviewerId = interviewerId; }
+    public String getInterviewerName() { return interviewerName; }
+    public void setInterviewerName(String interviewerName) { this.interviewerName = interviewerName; }
+    public String getSessionStatus() { return sessionStatus; }
+    public void setSessionStatus(String sessionStatus) { this.sessionStatus = sessionStatus; }
+    public String getAiModelSnapshot() { return aiModelSnapshot; }
+    public void setAiModelSnapshot(String aiModelSnapshot) { this.aiModelSnapshot = aiModelSnapshot; }
+    public Instant getEndedAt() { return endedAt; }
+    public void setEndedAt(Instant endedAt) { this.endedAt = endedAt; }
+    public Instant getScheduledAt() { return scheduledAt; }
+    public void setScheduledAt(Instant scheduledAt) { this.scheduledAt = scheduledAt; }
+    public String getReportStatus() { return reportStatus; }
+    public void setReportStatus(String reportStatus) { this.reportStatus = reportStatus; }
     public Integer getTotalScore() { return totalScore; }
     public void setTotalScore(Integer totalScore) { this.totalScore = totalScore; }
     public String getDimensionScoresJson() { return dimensionScoresJson; }
@@ -71,6 +115,4 @@ public class InterviewReportRecord {
     public void setGeneratedAt(Instant generatedAt) { this.generatedAt = generatedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }

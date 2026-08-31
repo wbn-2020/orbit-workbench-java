@@ -9,6 +9,7 @@
         <result property="totalScore" column="total_score"/>
         <result property="dimensionScoresJson" column="dimension_scores_json"/>
         <result property="hiringRecommendation" column="hiring_recommendation"/>
+        <result property="scoringRuleVersion" column="scoring_rule_version"/>
         <result property="strengthsJson" column="strengths_json"/>
         <result property="weaknessesJson" column="weaknesses_json"/>
         <result property="followUpFindingsJson" column="follow_up_findings_json"/>
@@ -24,6 +25,7 @@
 
     <sql id="allColumns">
         id, session_id, status, total_score, dimension_scores_json, hiring_recommendation,
+        scoring_rule_version,
         strengths_json, weaknesses_json, follow_up_findings_json, project_mastery_json,
         knowledge_gaps_json, study_suggestions_json, failure_reason, retry_count,
         generated_at, created_at, updated_at
@@ -74,6 +76,7 @@
             total_score = #{totalScore},
             dimension_scores_json = #{dimensionScoresJson},
             hiring_recommendation = #{hiringRecommendation},
+            scoring_rule_version = #{scoringRuleVersion},
             strengths_json = #{strengthsJson},
             weaknesses_json = #{weaknessesJson},
             follow_up_findings_json = #{followUpFindingsJson},
@@ -85,4 +88,127 @@
             updated_at = #{updatedAt}
         WHERE session_id = #{sessionId} AND status IN ('REPORT_PENDING', 'REPORT_FAILED')
     </update>
+
+    <resultMap id="ReportCenterRowMap" type="com.orbitworkbench.interview.domain.ReportCenterRow">
+        <id property="reportId" column="report_id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="sessionTitle" column="session_title"/>
+        <result property="topicMode" column="topic_mode"/>
+        <result property="form" column="form"/>
+        <result property="round" column="round"/>
+        <result property="targetRole" column="target_role"/>
+        <result property="targetExperienceBand" column="target_experience_band"/>
+        <result property="interviewerId" column="interviewer_id"/>
+        <result property="interviewerName" column="interviewer_name"/>
+        <result property="sessionStatus" column="session_status"/>
+        <result property="aiModelSnapshot" column="ai_model_snapshot"/>
+        <result property="endedAt" column="ended_at"/>
+        <result property="scheduledAt" column="scheduled_at"/>
+        <result property="reportStatus" column="report_status"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="dimensionScoresJson" column="dimension_scores_json"/>
+        <result property="hiringRecommendation" column="hiring_recommendation"/>
+        <result property="scoringRuleVersion" column="scoring_rule_version"/>
+        <result property="strengthsJson" column="strengths_json"/>
+        <result property="weaknessesJson" column="weaknesses_json"/>
+        <result property="followUpFindingsJson" column="follow_up_findings_json"/>
+        <result property="projectMasteryJson" column="project_mastery_json"/>
+        <result property="knowledgeGapsJson" column="knowledge_gaps_json"/>
+        <result property="studySuggestionsJson" column="study_suggestions_json"/>
+        <result property="failureReason" column="failure_reason"/>
+        <result property="retryCount" column="retry_count"/>
+        <result property="generatedAt" column="generated_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="centerColumns">
+        r.id AS report_id, r.session_id, s.title AS session_title, s.topic_mode, s.form, s.round,
+        s.target_role, s.target_experience_band, s.interviewer_id,
+        s.interviewer_name_snapshot AS interviewer_name, s.status AS session_status,
+        s.ai_model_snapshot, s.ended_at, s.scheduled_at,
+        r.status AS report_status, r.total_score, r.dimension_scores_json,
+        r.hiring_recommendation, r.scoring_rule_version, r.failure_reason, r.retry_count,
+        r.generated_at, r.created_at
+    </sql>
+
+    <sql id="centerDetailColumns">
+        r.strengths_json, r.weaknesses_json, r.follow_up_findings_json, r.project_mastery_json,
+        r.knowledge_gaps_json, r.study_suggestions_json
+    </sql>
+
+    <!-- interview_report 没有 user_id，归属只能靠会话侧过滤；
+         PENDING/FAILED 没有 generated_at，时间筛选回落到 updated_at，否则未就绪的报告会在列表里消失。 -->
+    <sql id="centerFilters">
+        AND s.user_id = #{userId}
+        <if test="days != null">
+            AND COALESCE(r.generated_at, r.updated_at)
+                >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL #{days} DAY)
+        </if>
+        <if test="topicMode != null">AND s.topic_mode = #{topicMode}</if>
+        <if test="form != null">AND s.form = #{form}</if>
+        <if test="recommendation != null">AND r.hiring_recommendation = #{recommendation}</if>
+        <if test="interviewerId != null">AND s.interviewer_id = #{interviewerId}</if>
+    </sql>
+
+    <select id="listByUser" resultMap="ReportCenterRowMap">
+        SELECT <include refid="centerColumns"/>
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE 1 = 1
+        <include refid="centerFilters"/>
+        ORDER BY COALESCE(r.generated_at, r.updated_at) DESC, r.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE 1 = 1
+        <include refid="centerFilters"/>
+    </select>
+
+    <select id="summaryCandidates" resultMap="ReportCenterRowMap">
+        SELECT <include refid="centerColumns"/>
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+          AND r.status = 'REPORT_READY'
+          AND r.scoring_rule_version = #{ruleVersion}
+        <if test="days != null">
+            AND r.generated_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL #{days} DAY)
+        </if>
+        ORDER BY r.generated_at ASC, r.id ASC
+        LIMIT 500
+    </select>
+
+    <select id="readyRuleVersionCounts"
+            resultType="com.orbitworkbench.interview.domain.RuleVersionSample">
+        SELECT r.scoring_rule_version AS ruleVersion, COUNT(*) AS sampleCount
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+          AND r.status = 'REPORT_READY'
+          AND r.scoring_rule_version IS NOT NULL
+        <if test="days != null">
+            AND r.generated_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL #{days} DAY)
+        </if>
+        GROUP BY r.scoring_rule_version
+        ORDER BY COUNT(*) DESC, MAX(r.generated_at) DESC
+    </select>
+
+    <select id="findOwned" resultMap="ReportCenterRowMap">
+        SELECT <include refid="centerColumns"/>, <include refid="centerDetailColumns"/>
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE s.user_id = #{userId} AND r.id = #{reportId}
+    </select>
+
+    <select id="answerSourceMix" resultType="com.orbitworkbench.interview.domain.AnswerSourceCount">
+        SELECT t.session_id AS sessionId, t.answer_source AS answerSource, COUNT(*) AS itemCount
+        FROM interview_turn t
+        WHERE t.session_id = #{sessionId} AND t.answer_source IS NOT NULL
+        GROUP BY t.session_id, t.answer_source
+        ORDER BY t.answer_source
+    </select>
 </mapper>

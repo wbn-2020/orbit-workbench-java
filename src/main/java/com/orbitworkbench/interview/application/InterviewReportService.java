@@ -20,6 +20,9 @@ import com.orbitworkbench.notification.application.NotificationService;
 import com.orbitworkbench.notification.domain.NotificationEvent;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -72,6 +75,29 @@ public class InterviewReportService {
              "knowledgeGaps":["技术知识薄弱点"],
              "studySuggestions":["建议的复习任务，每条一句话可执行"]}
             """;
+
+    /**
+     * 评分规则版本（14 §4）：哈希材料是「这份报告怎么被打出来」的全部内容——评分提示词、
+     * 解析上限与录用建议集合。改任意一项都会得到新版本，不引入需要人工声明的版本表。
+     */
+    static final String SCORING_RULE_VERSION = computeScoringRuleVersion();
+
+    private static String computeScoringRuleVersion() {
+        String material = SYSTEM_PROMPT + '\n' + MAX_DIMENSIONS + '|' + MAX_DIMENSION_NAME
+                + '|' + MAX_LIST_ITEMS + '|' + MAX_LIST_ITEM_CHARS + '|'
+                + String.join(",", RECOMMENDATIONS);
+        final byte[] digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256").digest(material.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("运行环境缺少 SHA-256", exception);
+        }
+        StringBuilder hex = new StringBuilder("rule-");
+        for (int index = 0; index < 6; index++) {
+            hex.append(String.format("%02x", digest[index]));
+        }
+        return hex.toString();
+    }
 
     private final InterviewSessionMapper sessionMapper;
     private final InterviewTurnMapper turnMapper;
@@ -178,7 +204,7 @@ public class InterviewReportService {
     private void persistScoredReport(InterviewSessionRecord session, ScoredReport scored) {
         Instant now = Instant.now();
         int updated = reportMapper.markReady(session.getId(), scored.totalScore(),
-                toJson(scored.dimensionScores()), scored.hiringRecommendation(),
+                toJson(scored.dimensionScores()), scored.hiringRecommendation(), SCORING_RULE_VERSION,
                 toJson(scored.strengths()), toJson(scored.weaknesses()), toJson(scored.followUpFindings()),
                 toJson(scored.projectMastery()), toJson(scored.knowledgeGaps()), toJson(scored.studySuggestions()),
                 now, now);

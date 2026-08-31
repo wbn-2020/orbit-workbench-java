@@ -89,7 +89,7 @@ class InterviewReportServiceTest {
         when(reportMapper.findBySessionId(21L))
                 .thenReturn(report(ReportStatus.REPORT_PENDING))
                 .thenReturn(ready);
-        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"),
+        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
                 any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
         when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
                 eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any())).thenReturn(1);
@@ -100,7 +100,7 @@ class InterviewReportServiceTest {
         assertEquals(84, response.report().totalScore());
         verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_REPORT), eq(7L), eq(5L),
                 any(), any(), anyInt(), any(Duration.class));
-        verify(reportMapper).markReady(eq(21L), eq(84), any(), eq("PASS"),
+        verify(reportMapper).markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
                 any(), any(), any(), any(), any(), any(), any(), any());
         verify(sessionMapper).updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
                 eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any());
@@ -124,7 +124,7 @@ class InterviewReportServiceTest {
                 reason.getValue() != null && reason.getValue().contains("JSON"),
                 "失败摘要应说明 JSON 结构问题，实际：" + reason.getValue());
         verify(reportMapper, never()).markReady(anyLong(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(notificationService).notify(
                 eq(com.orbitworkbench.notification.domain.NotificationEvent.INTERVIEW_REPORT_FAILED),
                 eq(7L), any(), any(),
@@ -152,7 +152,7 @@ class InterviewReportServiceTest {
                 .thenReturn(report(ReportStatus.REPORT_PENDING));
         when(reportMapper.markPending(eq(21L), any())).thenReturn(1);
         stubModelOutput(VALID_JSON);
-        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"),
+        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
                 any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
         when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
                 eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any())).thenReturn(1);
@@ -160,7 +160,7 @@ class InterviewReportServiceTest {
         service.retry(7L, 21L);
 
         verify(reportMapper).markPending(eq(21L), any());
-        verify(reportMapper).markReady(eq(21L), eq(84), any(), eq("PASS"),
+        verify(reportMapper).markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
                 any(), any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -173,7 +173,7 @@ class InterviewReportServiceTest {
         when(reportMapper.findBySessionId(21L))
                 .thenReturn(report(ReportStatus.REPORT_PENDING))
                 .thenReturn(ready);
-        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"),
+        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
                 any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
         when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
                 eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any())).thenReturn(1);
