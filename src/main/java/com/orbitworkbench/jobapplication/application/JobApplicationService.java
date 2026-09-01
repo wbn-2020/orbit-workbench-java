@@ -144,7 +144,9 @@ public class JobApplicationService {
 
     @Transactional
     public void delete(Long userId, Long id) {
-        owned(userId, id);
+        JobApplicationRecord record = owned(userId, id);
+        // 先删轨迹：fk_job_application_event_app 是 RESTRICT，漏这一步父行永远删不掉。
+        eventMapper.deleteByApplication(record.getId());
         if (mapper.delete(id, userId) != 1) {
             throw conflict("投递记录已变化，请刷新后重试");
         }

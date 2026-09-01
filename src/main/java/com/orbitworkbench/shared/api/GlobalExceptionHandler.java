@@ -16,6 +16,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -37,6 +38,33 @@ public class GlobalExceptionHandler {
         }
         return response(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
                 "请求参数校验失败", request, fieldErrors);
+    }
+
+    /**
+     * 路径变量绑不上目标类型（如 {@code /job-postings/abc} 要绑 {@code Long id}）是客户端请求形态问题，
+     * 必须返回 400：原先没有任何分支接住，落到兜底分支变成 500 {@code UNKNOWN_PROVIDER_ERROR}，
+     * 把「你给的路径参数不是数字」伪装成服务器故障（2026-09-02 C-05b 实测）。
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ResponseEntity<ProblemDetail> handleTypeMismatch(MethodArgumentTypeMismatchException exception,
+                                                     HttpServletRequest request) {
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        fieldErrors.put(exception.getName(), "取值形态不正确，需要" + typeName(exception.getRequiredType()));
+        return response(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
+                "路径参数 " + exception.getName() + " 不是合法取值", request, fieldErrors);
+    }
+
+    private static String typeName(Class<?> requiredType) {
+        if (requiredType == null) {
+            return "合法值";
+        }
+        if (Long.class.equals(requiredType) || Integer.class.equals(requiredType)) {
+            return "整数";
+        }
+        if (Boolean.class.equals(requiredType)) {
+            return "true 或 false";
+        }
+        return requiredType.getSimpleName();
     }
 
     @ExceptionHandler({
