@@ -10,6 +10,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -45,6 +46,20 @@ public class GlobalExceptionHandler {
     ResponseEntity<ProblemDetail> handleBadRequest(Exception exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
                 exception.getMessage(), request, null);
+    }
+
+    /**
+     * 内容类型不支持属于客户端请求形态问题，必须返回 415：落到兜底分支会变成
+     * 500 {@code UNKNOWN_PROVIDER_ERROR}，把「你的 Content-Type 不对」伪装成服务器故障
+     * （2026-09-01 用一个不带 Content-Type 的 POST 真实撞出来）。
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    ResponseEntity<ProblemDetail> handleMediaType(HttpMediaTypeNotSupportedException exception,
+                                                  HttpServletRequest request) {
+        return response(HttpStatus.UNSUPPORTED_MEDIA_TYPE, ErrorCode.UNSUPPORTED_MEDIA_TYPE,
+                "该接口只接受 application/json 请求体，收到的内容类型为 "
+                        + (exception.getContentType() == null ? "未提供" : exception.getContentType()),
+                request, null);
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
