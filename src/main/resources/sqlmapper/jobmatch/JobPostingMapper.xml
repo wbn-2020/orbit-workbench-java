@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.jobmatch.infrastructure.mapper.JobPostingMapper">
+    <resultMap id="JobPostingMap" type="com.orbitworkbench.jobmatch.domain.JobPostingRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="applicationId" column="application_id"/>
+        <result property="company" column="company"/>
+        <result property="title" column="title"/>
+        <result property="city" column="city"/>
+        <result property="salaryNote" column="salary_note"/>
+        <result property="source" column="source"/>
+        <result property="activeVersionId" column="active_version_id"/>
+        <result property="archived" column="archived"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="JobPostingVersionMap" type="com.orbitworkbench.jobmatch.domain.JobPostingVersionRecord">
+        <id property="id" column="id"/>
+        <result property="jobPostingId" column="job_posting_id"/>
+        <result property="versionNumber" column="version_number"/>
+        <result property="jdText" column="jd_text"/>
+        <result property="requiredSkillsJson" column="required_skills_json"/>
+        <result property="ruleVersion" column="rule_version"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <resultMap id="JobPostingListRowMap" type="com.orbitworkbench.jobmatch.domain.JobPostingListRow">
+        <id property="postingId" column="posting_id"/>
+        <result property="company" column="company"/>
+        <result property="title" column="title"/>
+        <result property="city" column="city"/>
+        <result property="salaryNote" column="salary_note"/>
+        <result property="source" column="source"/>
+        <result property="archived" column="archived"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="activeVersionId" column="active_version_id"/>
+        <result property="activeVersionNumber" column="active_version_number"/>
+        <result property="requirementCount" column="requirement_count"/>
+        <result property="applicationId" column="application_id"/>
+        <result property="applicationCompany" column="application_company"/>
+        <result property="applicationRole" column="application_role"/>
+        <result property="applicationStage" column="application_stage"/>
+        <result property="lastMatchedAt" column="last_matched_at"/>
+        <result property="lastMatchConfirmationStatus" column="last_match_confirmation_status"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, application_id, company, title, city, salary_note, source,
+        active_version_id, archived, created_at, updated_at
+    </sql>
+
+    <sql id="versionColumns">
+        id, job_posting_id, version_number, jd_text, required_skills_json, rule_version, created_at
+    </sql>
+
+    <!--
+      列表一次查全（`17` §8）：活动版本号、要求条数、关联投递摘要、最近一次匹配时间与状态。
+      两个 MAX/LIMIT 子查询都要经 job_posting_version 回到岗位，因为匹配行只认版本不认岗位，
+      这条链路依赖 V31 补的 idx_job_match_posting_version。
+    -->
+    <sql id="listColumns">
+        p.id AS posting_id, p.company, p.title, p.city, p.salary_note, p.source,
+        p.archived, p.updated_at, p.active_version_id, p.application_id,
+        v.version_number AS active_version_number,
+        JSON_LENGTH(v.required_skills_json) AS requirement_count,
+        a.company AS application_company, a.role AS application_role, a.stage AS application_stage,
+        (SELECT MAX(m.created_at) FROM job_match_result m
+            JOIN job_posting_version pv ON pv.id = m.job_posting_version_id
+            WHERE pv.job_posting_id = p.id) AS last_matched_at,
+        (SELECT m.confirmation_status FROM job_match_result m
+            JOIN job_posting_version pv ON pv.id = m.job_posting_version_id
+            WHERE pv.job_posting_id = p.id
+            ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_match_confirmation_status
+    </sql>
+
+    <sql id="listJoins">
+        FROM job_posting p
+        LEFT JOIN job_posting_version v ON v.id = p.active_version_id
+        LEFT JOIN job_application a ON a.id = p.application_id
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.jobmatch.domain.JobPostingRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_posting(
+            user_id, application_id, company, title, city, salary_note, source,
+            active_version_id, archived, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{applicationId}, #{company}, #{title}, #{city}, #{salaryNote}, #{source},
+            #{activeVersionId}, #{archived}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findOwned" resultMap="JobPostingMap">
+        SELECT <include refid="allColumns"/>
+        FROM job_posting
+        WHERE id = #{id} AND user_id = #{userId}
+    </select>
+
+    <select id="findById" resultMap="JobPostingMap">
+        SELECT <include refid="allColumns"/>
+        FROM job_posting
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateMeta">
+        UPDATE job_posting
+        SET application_id = #{applicationId}, company = #{company}, title = #{title},
+            city = #{city}, salary_note = #{salaryNote}, source = #{source}, updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND updated_at = #{expectedUpdatedAt}
+    </update>
+
+    <update id="updateActiveVersion">
+        UPDATE job_posting
+        SET active_version_id = #{versionId}, updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="updateArchived">
+        UPDATE job_posting
+        SET archived = #{archived}, updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <select id="listByUser" resultMap="JobPostingListRowMap">
+        SELECT <include refid="listColumns"/>
+        <include refid="listJoins"/>
+        WHERE p.user_id = #{userId}
+        <if test="archived != null">
+            AND p.archived = #{archived}
+        </if>
+        <if test="keyword != null">
+            AND (p.company LIKE CONCAT('%', #{keyword}, '%')
+                OR p.title LIKE CONCAT('%', #{keyword}, '%')
+                OR p.city LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY p.updated_at DESC, p.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM job_posting p
+        WHERE p.user_id = #{userId}
+        <if test="archived != null">
+            AND p.archived = #{archived}
+        </if>
+        <if test="keyword != null">
+            AND (p.company LIKE CONCAT('%', #{keyword}, '%')
+                OR p.title LIKE CONCAT('%', #{keyword}, '%')
+                OR p.city LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+    <insert id="insertVersion" parameterType="com.orbitworkbench.jobmatch.domain.JobPostingVersionRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_posting_version(
+            job_posting_id, version_number, jd_text, required_skills_json, rule_version, created_at
+        )
+        VALUES(
+            #{jobPostingId}, #{versionNumber}, #{jdText}, #{requiredSkillsJson},
+            #{ruleVersion}, #{createdAt}
+        )
+    </insert>
+
+    <select id="findVersion" resultMap="JobPostingVersionMap">
+        SELECT <include refid="versionColumns"/>
+        FROM job_posting_version
+        WHERE id = #{versionId}
+    </select>
+
+    <select id="findVersionOfPosting" resultMap="JobPostingVersionMap">
+        SELECT <include refid="versionColumns"/>
+        FROM job_posting_version
+        WHERE id = #{versionId} AND job_posting_id = #{postingId}
+    </select>
+
+    <select id="listVersions" resultMap="JobPostingVersionMap">
+        SELECT <include refid="versionColumns"/>
+        FROM job_posting_version
+        WHERE job_posting_id = #{postingId}
+        ORDER BY version_number DESC
+    </select>
+
+    <select id="maxVersionNumber" resultType="java.lang.Integer">
+        SELECT MAX(version_number)
+        FROM job_posting_version
+        WHERE job_posting_id = #{postingId}
+    </select>
+</mapper>

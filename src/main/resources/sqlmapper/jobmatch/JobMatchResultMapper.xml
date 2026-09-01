@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.jobmatch.infrastructure.mapper.JobMatchResultMapper">
+    <resultMap id="JobMatchResultMap" type="com.orbitworkbench.jobmatch.domain.JobMatchResultRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="jobPostingVersionId" column="job_posting_version_id"/>
+        <result property="resumeVersionId" column="resume_version_id"/>
+        <result property="profileSnapshotJson" column="profile_snapshot_json"/>
+        <result property="ruleVersion" column="rule_version"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="skillScore" column="skill_score"/>
+        <result property="experienceScore" column="experience_score"/>
+        <result property="projectScore" column="project_score"/>
+        <result property="matchedJson" column="matched_json"/>
+        <result property="gapsJson" column="gaps_json"/>
+        <result property="confirmationStatus" column="confirmation_status"/>
+        <result property="confirmedAt" column="confirmed_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <resultMap id="JobMatchRowMap" type="com.orbitworkbench.jobmatch.domain.JobMatchRow">
+        <id property="matchId" column="match_id"/>
+        <result property="jobPostingVersionId" column="job_posting_version_id"/>
+        <result property="jdVersionNumber" column="jd_version_number"/>
+        <result property="resumeVersionId" column="resume_version_id"/>
+        <result property="resumeVersionNumber" column="resume_version_number"/>
+        <result property="resumeStatus" column="resume_status"/>
+        <result property="ruleVersion" column="rule_version"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="skillScore" column="skill_score"/>
+        <result property="experienceScore" column="experience_score"/>
+        <result property="projectScore" column="project_score"/>
+        <result property="matchedJson" column="matched_json"/>
+        <result property="gapsJson" column="gaps_json"/>
+        <result property="profileSnapshotJson" column="profile_snapshot_json"/>
+        <result property="confirmationStatus" column="confirmation_status"/>
+        <result property="confirmedAt" column="confirmed_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, job_posting_version_id, resume_version_id, profile_snapshot_json, rule_version,
+        total_score, skill_score, experience_score, project_score,
+        matched_json, gaps_json, confirmation_status, confirmed_at, created_at
+    </sql>
+
+    <!--
+      历史行要能回答「当时比的是哪一版 JD 和哪一版简历」，所以两个 JOIN 都是解释性信息。
+      resume_version 没有 user_id，归属在保存时已由 ResumeService.detail(userId, versionId) 校验过，
+      这里只读版本号与状态用于展示（与错题本列表 JOIN 来源行的做法一致）。
+    -->
+    <sql id="rowColumns">
+        m.id AS match_id, m.job_posting_version_id, pv.version_number AS jd_version_number,
+        m.resume_version_id, rv.version_number AS resume_version_number, rv.status AS resume_status,
+        m.rule_version, m.total_score, m.skill_score, m.experience_score, m.project_score,
+        m.matched_json, m.gaps_json, m.profile_snapshot_json,
+        m.confirmation_status, m.confirmed_at, m.created_at
+    </sql>
+
+    <sql id="rowJoins">
+        FROM job_match_result m
+        JOIN job_posting_version pv ON pv.id = m.job_posting_version_id
+        LEFT JOIN resume_version rv ON rv.id = m.resume_version_id
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.jobmatch.domain.JobMatchResultRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO job_match_result(
+            user_id, job_posting_version_id, resume_version_id, profile_snapshot_json, rule_version,
+            total_score, skill_score, experience_score, project_score,
+            matched_json, gaps_json, confirmation_status, confirmed_at, created_at
+        )
+        VALUES(
+            #{userId}, #{jobPostingVersionId}, #{resumeVersionId}, #{profileSnapshotJson}, #{ruleVersion},
+            #{totalScore}, #{skillScore}, #{experienceScore}, #{projectScore},
+            #{matchedJson}, #{gapsJson}, #{confirmationStatus}, #{confirmedAt}, #{createdAt}
+        )
+    </insert>
+
+    <select id="findOwned" resultMap="JobMatchRowMap">
+        SELECT <include refid="rowColumns"/>
+        <include refid="rowJoins"/>
+        WHERE m.id = #{matchId} AND m.user_id = #{userId}
+    </select>
+
+    <select id="listByPosting" resultMap="JobMatchRowMap">
+        SELECT <include refid="rowColumns"/>
+        <include refid="rowJoins"/>
+        WHERE m.user_id = #{userId} AND pv.job_posting_id = #{postingId}
+        ORDER BY m.created_at DESC, m.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByPosting" resultType="long">
+        SELECT COUNT(*)
+        FROM job_match_result m
+        JOIN job_posting_version pv ON pv.id = m.job_posting_version_id
+        WHERE m.user_id = #{userId} AND pv.job_posting_id = #{postingId}
+    </select>
+
+    <update id="updateConfirmation">
+        UPDATE job_match_result
+        SET confirmation_status = #{status}, confirmed_at = #{confirmedAt}
+        WHERE id = #{matchId} AND user_id = #{userId}
+        <if test="expectedStatus != null">
+            AND confirmation_status = #{expectedStatus}
+        </if>
+    </update>
+</mapper>
