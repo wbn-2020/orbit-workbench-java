@@ -140,6 +140,9 @@ public final class PracticeDtos {
             /** 一条都没有时不渲染掌握进度（与 `14` §6 同口径）。 */
             boolean renderable,
             List<TopicCount> topics,
-            Instant lastAttemptAt
+            Instant lastAttemptAt,
+            /** 掌握判定的两个阈值随接口下发，界面文案因此不会与 `PracticeService` 走偏。 */
+            int masteredStreak,
+            int masteredSelfScore
     ) {}
 }

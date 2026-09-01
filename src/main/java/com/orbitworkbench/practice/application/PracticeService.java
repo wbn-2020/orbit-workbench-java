@@ -128,7 +128,7 @@ public class PracticeService {
         }
         Instant lastAttemptAt = attemptMapper.lastAttemptAtByUser(userId, archivedValue);
         return new PracticeSummaryResponse(total, newCount, learning, mastered, total > 0,
-                List.copyOf(topics), lastAttemptAt);
+                List.copyOf(topics), lastAttemptAt, MASTERED_STREAK, MASTERED_SELF_SCORE);
     }
 
     @Transactional(readOnly = true)
