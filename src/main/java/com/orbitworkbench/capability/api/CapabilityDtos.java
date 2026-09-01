@@ -21,9 +21,10 @@ public final class CapabilityDtos {
             int sampleCount
     ) {}
 
-    /** 趋势序列上的一个点：总分按生成时间升序，带 reportId 便于点回详情。 */
+    /** 趋势序列上的一个点：总分按生成时间升序，带 reportId/sessionId 便于点回那一场。 */
     public record ScorePoint(
             Long reportId,
+            Long sessionId,
             Instant generatedAt,
             int totalScore
     ) {}

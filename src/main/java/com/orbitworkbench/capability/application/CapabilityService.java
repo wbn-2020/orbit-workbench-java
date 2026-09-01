@@ -94,7 +94,8 @@ public class CapabilityService {
         List<ScorePoint> series = new ArrayList<>();
         for (CapabilityReportRow row : rows) {
             if (row.getTotalScore() != null && row.getGeneratedAt() != null) {
-                series.add(new ScorePoint(row.getReportId(), row.getGeneratedAt(), row.getTotalScore()));
+                series.add(new ScorePoint(row.getReportId(), row.getSessionId(),
+                        row.getGeneratedAt(), row.getTotalScore()));
             }
         }
 
