@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.capability.infrastructure.mapper.CapabilityMapper">
+
+    <resultMap id="CapabilityReportRowMap" type="com.orbitworkbench.capability.domain.CapabilityReportRow">
+        <id property="reportId" column="report_id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="scoringRuleVersion" column="scoring_rule_version"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="dimensionScoresJson" column="dimension_scores_json"/>
+        <result property="generatedAt" column="generated_at"/>
+    </resultMap>
+
+    <!-- interview_report 没有 user_id，归属只能靠会话侧过滤（与 14 §5 同一口径）。
+         LIMIT 500 是防御性上限：区间与规则版本已经限定了样本，界面只画这段时间的点。 -->
+    <select id="readyReports" resultMap="CapabilityReportRowMap">
+        SELECT r.id AS report_id,
+               r.session_id,
+               r.scoring_rule_version,
+               r.total_score,
+               r.dimension_scores_json,
+               r.generated_at
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+          AND r.status = 'REPORT_READY'
+          AND r.scoring_rule_version = #{ruleVersion}
+        <if test="days != null">
+            AND r.generated_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL #{days} DAY)
+        </if>
+        ORDER BY r.generated_at ASC, r.id ASC
+        LIMIT 500
+    </select>
+
+    <!-- 与报告中心的 readyRuleVersionCounts 唯一的区别：这里**不排除** NULL 组，
+         技能图谱要把「未记录规则版本」的报告单独计数显示出来，而不是让它们消失（16 §7）。 -->
+    <select id="readyVersionCounts"
+            resultType="com.orbitworkbench.capability.domain.RuleVersionCount">
+        SELECT r.scoring_rule_version AS ruleVersion, COUNT(*) AS sampleCount
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+          AND r.status = 'REPORT_READY'
+        <if test="days != null">
+            AND r.generated_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL #{days} DAY)
+        </if>
+        GROUP BY r.scoring_rule_version
+        ORDER BY COUNT(*) DESC, MAX(r.generated_at) DESC
+    </select>
+
+    <select id="countConfirmedProjectFacts" resultType="long">
+        SELECT COUNT(*)
+        FROM project_fact f
+        WHERE f.user_id = #{userId}
+          AND f.confirmation_status = 'CONFIRMED'
+    </select>
+
+</mapper>

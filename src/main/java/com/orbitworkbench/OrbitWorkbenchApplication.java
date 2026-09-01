@@ -11,8 +11,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @EnableAsync
 @EnableScheduling
+// 新增业务模块必须在这里登记自己的 mapper 包，漏登记会让应用启动即 No qualifying bean。
 @MapperScan({
         "com.orbitworkbench.aiconnection.infrastructure.mapper",
+        "com.orbitworkbench.capability.infrastructure.mapper",
         "com.orbitworkbench.identity.infrastructure.mapper",
         "com.orbitworkbench.interview.infrastructure.mapper",
         "com.orbitworkbench.interviewer.infrastructure.mapper",
