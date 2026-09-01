@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.practice.infrastructure.mapper.PracticeAttemptMapper">
+    <resultMap id="PracticeAttemptMap" type="com.orbitworkbench.practice.domain.PracticeAttemptRecord">
+        <id property="id" column="id"/>
+        <result property="practiceItemId" column="practice_item_id"/>
+        <result property="answer" column="answer"/>
+        <result property="selfScore" column="self_score"/>
+        <result property="result" column="result"/>
+        <result property="feedback" column="feedback"/>
+        <result property="attemptedAt" column="attempted_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, practice_item_id, answer, self_score, result, feedback, attempted_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.practice.domain.PracticeAttemptRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO practice_attempt(
+            practice_item_id, answer, self_score, result, feedback, attempted_at
+        )
+        VALUES(
+            #{practiceItemId}, #{answer}, #{selfScore}, #{result}, #{feedback}, #{attemptedAt}
+        )
+    </insert>
+
+    <select id="listByItem" resultMap="PracticeAttemptMap">
+        SELECT <include refid="allColumns"/>
+        FROM practice_attempt
+        WHERE practice_item_id = #{itemId}
+        ORDER BY attempted_at ASC, id ASC
+    </select>
+
+    <select id="countByItem" resultType="long">
+        SELECT COUNT(*)
+        FROM practice_attempt
+        WHERE practice_item_id = #{itemId}
+    </select>
+
+    <!-- practice_attempt 没有 user_id，只能经条目关联取该用户的全局最近尝试时间。 -->
+    <select id="lastAttemptAtByUser" resultType="java.time.Instant">
+        SELECT MAX(a.attempted_at)
+        FROM practice_attempt a
+        JOIN practice_item i ON i.id = a.practice_item_id
+        WHERE i.user_id = #{userId}
+        <if test="archived != null">
+            AND i.archived = #{archived}
+        </if>
+    </select>
+</mapper>

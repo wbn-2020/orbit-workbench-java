@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.practice.infrastructure.mapper.PracticeItemMapper">
+    <resultMap id="PracticeItemMap" type="com.orbitworkbench.practice.domain.PracticeItemRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="sourceId" column="source_id"/>
+        <result property="topic" column="topic"/>
+        <result property="question" column="question"/>
+        <result property="referenceAnswer" column="reference_answer"/>
+        <result property="masteryStatus" column="mastery_status"/>
+        <result property="nextReviewDate" column="next_review_date"/>
+        <result property="archived" column="archived"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="PracticeItemRowMap" type="com.orbitworkbench.practice.domain.PracticeItemRow">
+        <id property="itemId" column="item_id"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="sourceId" column="source_id"/>
+        <result property="topic" column="topic"/>
+        <result property="question" column="question"/>
+        <result property="referenceAnswer" column="reference_answer"/>
+        <result property="masteryStatus" column="mastery_status"/>
+        <result property="nextReviewDate" column="next_review_date"/>
+        <result property="archived" column="archived"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="attemptCount" column="attempt_count"/>
+        <result property="lastAttemptAt" column="last_attempt_at"/>
+        <result property="lastResult" column="last_result"/>
+        <result property="lastSelfScore" column="last_self_score"/>
+        <result property="sourceSessionId" column="source_session_id"/>
+        <result property="sourceSessionTitle" column="source_session_title"/>
+        <result property="sourceTopicMode" column="source_topic_mode"/>
+        <result property="sourceForm" column="source_form"/>
+        <result property="reportTotalScore" column="report_total_score"/>
+        <result property="reportScoringRuleVersion" column="report_scoring_rule_version"/>
+        <result property="originalQuestion" column="original_question"/>
+        <result property="originalAnswer" column="original_answer"/>
+        <result property="originalAnswerSource" column="original_answer_source"/>
+        <result property="originalTurnType" column="original_turn_type"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, source_type, source_id, topic, question, reference_answer,
+        mastery_status, next_review_date, archived, created_at, updated_at
+    </sql>
+
+    <!--
+      来源追溯在一条查询里完成（`15` §5）：报告来源只能追到报告与会话，
+      轮次来源还能追到原始问答。两条 LEFT JOIN 都不带用户条件，
+      因为条目本身的 user_id 过滤已经决定了可见范围，来源行只是解释性信息。
+    -->
+    <sql id="rowColumns">
+        i.id AS item_id, i.source_type, i.source_id, i.topic, i.question, i.reference_answer,
+        i.mastery_status, i.next_review_date, i.archived, i.created_at, i.updated_at,
+        (SELECT COUNT(*) FROM practice_attempt a WHERE a.practice_item_id = i.id) AS attempt_count,
+        (SELECT MAX(a.attempted_at) FROM practice_attempt a WHERE a.practice_item_id = i.id) AS last_attempt_at,
+        (SELECT a.result FROM practice_attempt a WHERE a.practice_item_id = i.id
+            ORDER BY a.attempted_at DESC, a.id DESC LIMIT 1) AS last_result,
+        (SELECT a.self_score FROM practice_attempt a WHERE a.practice_item_id = i.id
+            ORDER BY a.attempted_at DESC, a.id DESC LIMIT 1) AS last_self_score,
+        COALESCE(r.session_id, t.session_id) AS source_session_id,
+        COALESCE(rs.title, ts.title) AS source_session_title,
+        COALESCE(rs.topic_mode, ts.topic_mode) AS source_topic_mode,
+        COALESCE(rs.form, ts.form) AS source_form,
+        r.total_score AS report_total_score,
+        r.scoring_rule_version AS report_scoring_rule_version,
+        t.question AS original_question,
+        t.answer AS original_answer,
+        t.answer_source AS original_answer_source,
+        t.turn_type AS original_turn_type
+    </sql>
+
+    <sql id="rowJoins">
+        LEFT JOIN interview_report r ON i.source_type = 'REPORT' AND r.id = i.source_id
+        LEFT JOIN interview_session rs ON rs.id = r.session_id
+        LEFT JOIN interview_turn t ON i.source_type = 'INTERVIEW_TURN' AND t.id = i.source_id
+        LEFT JOIN interview_session ts ON ts.id = t.session_id
+    </sql>
+
+    <sql id="baseFilters">
+        WHERE i.user_id = #{userId}
+        <if test="archived != null">
+            AND i.archived = #{archived}
+        </if>
+    </sql>
+
+    <sql id="userFilters">
+        <include refid="baseFilters"/>
+        <if test="mastery != null">
+            AND i.mastery_status = #{mastery}
+        </if>
+        <if test="sourceType != null">
+            AND i.source_type = #{sourceType}
+        </if>
+        <if test="topic != null">
+            AND i.topic = #{topic}
+        </if>
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.practice.domain.PracticeItemRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO practice_item(
+            user_id, source_type, source_id, topic, question, reference_answer,
+            mastery_status, next_review_date, archived, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{sourceType}, #{sourceId}, #{topic}, #{question}, #{referenceAnswer},
+            #{masteryStatus}, #{nextReviewDate}, #{archived}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findById" resultMap="PracticeItemMap">
+        SELECT <include refid="allColumns"/>
+        FROM practice_item
+        WHERE id = #{id}
+    </select>
+
+    <select id="findOwned" resultMap="PracticeItemRowMap">
+        SELECT <include refid="rowColumns"/>
+        FROM practice_item i
+        <include refid="rowJoins"/>
+        WHERE i.user_id = #{userId} AND i.id = #{itemId}
+    </select>
+
+    <select id="listByUser" resultMap="PracticeItemRowMap">
+        SELECT <include refid="rowColumns"/>
+        FROM practice_item i
+        <include refid="rowJoins"/>
+        <include refid="userFilters"/>
+        <!-- 待复习优先，其次按掌握状态，最后按创建时间倒序 -->
+        ORDER BY
+            CASE i.mastery_status
+                WHEN 'NEW' THEN 0
+                WHEN 'LEARNING' THEN 1
+                ELSE 2
+            END,
+            COALESCE(i.next_review_date, '9999-12-31') ASC,
+            i.created_at DESC,
+            i.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM practice_item i
+        <include refid="userFilters"/>
+    </select>
+
+    <select id="listTopics" resultType="string">
+        SELECT DISTINCT i.topic
+        FROM practice_item i
+        <include refid="baseFilters"/>
+        ORDER BY i.topic
+    </select>
+
+    <select id="countSameSourceText" resultType="int">
+        SELECT COUNT(*)
+        FROM practice_item
+        WHERE user_id = #{userId}
+          AND source_type = #{sourceType}
+        <choose>
+            <when test="sourceId != null">
+                AND source_id = #{sourceId}
+            </when>
+            <otherwise>
+                AND source_id IS NULL
+            </otherwise>
+        </choose>
+          AND question = #{question}
+    </select>
+
+    <update id="updateMastery">
+        UPDATE practice_item
+        SET mastery_status = #{mastery}, updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="updateArchived">
+        UPDATE practice_item
+        SET archived = #{archived}, updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="updateClassification">
+        UPDATE practice_item
+        SET topic = #{topic},
+            reference_answer = #{referenceAnswer},
+            next_review_date = #{nextReviewDate},
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+          AND updated_at = #{expectedUpdatedAt}
+    </update>
+</mapper>
