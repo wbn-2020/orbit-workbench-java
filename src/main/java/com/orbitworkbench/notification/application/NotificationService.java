@@ -33,6 +33,7 @@ public class NotificationService {
     public static final String RESOURCE_INTERVIEW_SESSION = "INTERVIEW_SESSION";
     public static final String RESOURCE_PROJECT_VERSION = "PROJECT_VERSION";
     public static final String RESOURCE_STUDY_TASK = "STUDY_TASK";
+    public static final String RESOURCE_SCHEDULE_EVENT = "SCHEDULE_EVENT";
 
     private final NotificationMapper mapper;
     private final PreferenceService preferenceService;

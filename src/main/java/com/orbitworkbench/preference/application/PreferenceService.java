@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PreferenceService {
 
     private static final Logger log = LoggerFactory.getLogger(PreferenceService.class);
+    private static final String DEFAULT_TIMEZONE = "Asia/Shanghai";
 
     private final UserPreferenceMapper mapper;
 
@@ -76,7 +77,22 @@ public class PreferenceService {
             case INTERVIEW_REPORT_FAILED, KNOWLEDGE_BUILD_FAILED -> record.isNotifyAiFailure();
             case PROJECT_IMPORT_PARTIAL -> record.isNotifyImportFailure();
             case STUDY_TASK_DUE -> record.isNotifyStudyDue();
+            case SCHEDULE_REMINDER -> record.isNotifyInterview();
         };
+    }
+
+    @Transactional(readOnly = true)
+    public ZoneId timezone(Long userId) {
+        try {
+            UserPreferenceRecord record = mapper.findByUserId(userId);
+            if (record == null || record.getTimezoneId() == null || record.getTimezoneId().isBlank()) {
+                return ZoneId.of(DEFAULT_TIMEZONE);
+            }
+            return ZoneId.of(record.getTimezoneId());
+        } catch (RuntimeException exception) {
+            log.warn("读取用户时区失败，按默认时区处理，userId={}", userId, exception);
+            return ZoneId.of(DEFAULT_TIMEZONE);
+        }
     }
 
     private UserPreferenceRecord ensureRecord(Long userId) {

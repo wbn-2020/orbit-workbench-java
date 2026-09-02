@@ -53,6 +53,17 @@
         ORDER BY start_at ASC, id ASC
     </select>
 
+    <select id="listDueReminders" resultMap="ScheduleEventMap">
+        SELECT <include refid="allColumns"/>
+        FROM schedule_event
+        WHERE source_type = 'CUSTOM'
+          AND status = 'PLANNED'
+          AND reminder_minutes IS NOT NULL
+          AND start_at &gt;= DATE_SUB(#{now}, INTERVAL 2 MINUTE)
+          AND DATE_SUB(start_at, INTERVAL reminder_minutes MINUTE) &lt;= #{now}
+        ORDER BY start_at ASC, id ASC
+    </select>
+
     <update id="update">
         UPDATE schedule_event
         SET title = #{title},

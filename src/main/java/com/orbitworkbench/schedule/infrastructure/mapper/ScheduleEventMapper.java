@@ -19,6 +19,8 @@ public interface ScheduleEventMapper {
             @Param("from") Instant from,
             @Param("to") Instant to);
 
+    List<ScheduleEventRecord> listDueReminders(@Param("now") Instant now);
+
     int update(
             @Param("id") Long id,
             @Param("userId") Long userId,
