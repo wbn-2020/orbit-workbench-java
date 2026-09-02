@@ -14,6 +14,7 @@ public class PracticeItemRecord {
     private String referenceAnswer;
     private MasteryStatus masteryStatus;
     private LocalDate nextReviewDate;
+    private ReviewDateSource reviewDateSource;
     private boolean archived;
     private Instant createdAt;
     private Instant updatedAt;
@@ -36,6 +37,8 @@ public class PracticeItemRecord {
     public void setMasteryStatus(MasteryStatus masteryStatus) { this.masteryStatus = masteryStatus; }
     public LocalDate getNextReviewDate() { return nextReviewDate; }
     public void setNextReviewDate(LocalDate nextReviewDate) { this.nextReviewDate = nextReviewDate; }
+    public ReviewDateSource getReviewDateSource() { return reviewDateSource; }
+    public void setReviewDateSource(ReviewDateSource reviewDateSource) { this.reviewDateSource = reviewDateSource; }
     public boolean isArchived() { return archived; }
     public void setArchived(boolean archived) { this.archived = archived; }
     public Instant getCreatedAt() { return createdAt; }

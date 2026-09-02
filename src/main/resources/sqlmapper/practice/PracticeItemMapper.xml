@@ -12,6 +12,7 @@
         <result property="referenceAnswer" column="reference_answer"/>
         <result property="masteryStatus" column="mastery_status"/>
         <result property="nextReviewDate" column="next_review_date"/>
+        <result property="reviewDateSource" column="review_date_source"/>
         <result property="archived" column="archived"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
@@ -26,6 +27,7 @@
         <result property="referenceAnswer" column="reference_answer"/>
         <result property="masteryStatus" column="mastery_status"/>
         <result property="nextReviewDate" column="next_review_date"/>
+        <result property="reviewDateSource" column="review_date_source"/>
         <result property="archived" column="archived"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
@@ -47,7 +49,7 @@
 
     <sql id="allColumns">
         id, user_id, source_type, source_id, topic, question, reference_answer,
-        mastery_status, next_review_date, archived, created_at, updated_at
+        mastery_status, next_review_date, review_date_source, archived, created_at, updated_at
     </sql>
 
     <!--
@@ -57,7 +59,7 @@
     -->
     <sql id="rowColumns">
         i.id AS item_id, i.source_type, i.source_id, i.topic, i.question, i.reference_answer,
-        i.mastery_status, i.next_review_date, i.archived, i.created_at, i.updated_at,
+        i.mastery_status, i.next_review_date, i.review_date_source, i.archived, i.created_at, i.updated_at,
         (SELECT COUNT(*) FROM practice_attempt a WHERE a.practice_item_id = i.id) AS attempt_count,
         (SELECT MAX(a.attempted_at) FROM practice_attempt a WHERE a.practice_item_id = i.id) AS last_attempt_at,
         (SELECT a.result FROM practice_attempt a WHERE a.practice_item_id = i.id
@@ -107,11 +109,11 @@
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO practice_item(
             user_id, source_type, source_id, topic, question, reference_answer,
-            mastery_status, next_review_date, archived, created_at, updated_at
+            mastery_status, next_review_date, review_date_source, archived, created_at, updated_at
         )
         VALUES(
             #{userId}, #{sourceType}, #{sourceId}, #{topic}, #{question}, #{referenceAnswer},
-            #{masteryStatus}, #{nextReviewDate}, #{archived}, #{createdAt}, #{updatedAt}
+            #{masteryStatus}, #{nextReviewDate}, #{reviewDateSource}, #{archived}, #{createdAt}, #{updatedAt}
         )
     </insert>
 
@@ -184,6 +186,7 @@
         UPDATE practice_item
         SET mastery_status = #{mastery},
             next_review_date = #{nextReviewDate},
+            review_date_source = #{reviewDateSource},
             updated_at = #{updatedAt}
         WHERE id = #{id} AND user_id = #{userId}
     </update>
@@ -199,6 +202,7 @@
         SET topic = #{topic},
             reference_answer = #{referenceAnswer},
             next_review_date = #{nextReviewDate},
+            review_date_source = #{reviewDateSource},
             updated_at = #{updatedAt}
         WHERE id = #{id} AND user_id = #{userId}
           AND updated_at = #{expectedUpdatedAt}

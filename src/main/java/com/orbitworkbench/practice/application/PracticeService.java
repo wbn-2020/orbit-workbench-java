@@ -24,6 +24,7 @@ import com.orbitworkbench.practice.domain.PracticeItemRecord;
 import com.orbitworkbench.practice.domain.PracticeItemRow;
 import com.orbitworkbench.practice.domain.PracticeResult;
 import com.orbitworkbench.practice.domain.PracticeSource;
+import com.orbitworkbench.practice.domain.ReviewDateSource;
 import com.orbitworkbench.practice.infrastructure.mapper.PracticeAttemptMapper;
 import com.orbitworkbench.practice.infrastructure.mapper.PracticeItemMapper;
 import com.orbitworkbench.shared.api.ApiException;
@@ -237,8 +238,9 @@ public class PracticeService {
     /**
      * 提交一次重练：只新增尝试，再按尝试历史重算并落回掌握状态，同时按阶梯推进复习日（`15` §11）。
      *
-     * <p>推进复习日是这一步的既定副作用：表里没有列能区分「用户手设」与「规则算出」，
-     * 所以此前手工设定的复习日会在这里被覆盖，界面对这一条必须明说（`15` §11 代价列）。
+     * <p>推进复习日是这一步的既定副作用：当前已经用来源列区分「用户手设」与「规则算出」，
+     * 但尚未支持钉住日期，因此此前手工设定的复习日仍会在这里被规则覆盖，
+     * 界面对这一条必须明说（`15` §11 代价列）。
      */
     @Transactional
     public ItemDetailResponse addAttempt(Long userId, Long itemId, AttemptRequest request) {
@@ -261,7 +263,8 @@ public class PracticeService {
         MasteryStatus status = recompute(attempts);
         LocalDate nextReviewDate = scheduleReview(attempts);
         Instant now = Instant.now();
-        itemMapper.updateAfterAttempt(itemId, userId, status, nextReviewDate, now);
+        itemMapper.updateAfterAttempt(itemId, userId, status, nextReviewDate,
+                ReviewDateSource.RULE, now);
         PracticeItemRow row = requireOwned(userId, itemId);
         return new ItemDetailResponse(ItemResponse.from(row, streakOf(attempts)),
                 attempts.stream().map(AttemptResponse::from).toList());
@@ -278,7 +281,9 @@ public class PracticeService {
         Instant expected = parseInstant(request.expectedUpdatedAt());
         Instant now = Instant.now();
         int updated = itemMapper.updateClassification(itemId, userId, topic, reference,
-                request.nextReviewDate(), expected, now);
+                request.nextReviewDate(),
+                request.nextReviewDate() == null ? null : ReviewDateSource.MANUAL,
+                expected, now);
         if (updated != 1) {
             throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
                     "条目已被其他操作更新，请重新加载后再修改（当前归类：" + current.getTopic() + "）");
@@ -314,6 +319,7 @@ public class PracticeService {
         record.setQuestion(question);
         record.setReferenceAnswer(reference);
         record.setMasteryStatus(MasteryStatus.NEW);
+        record.setReviewDateSource(null);
         record.setArchived(false);
         record.setCreatedAt(now);
         record.setUpdatedAt(now);

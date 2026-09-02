@@ -5,6 +5,7 @@ import com.orbitworkbench.practice.domain.PracticeAttemptRecord;
 import com.orbitworkbench.practice.domain.PracticeItemRow;
 import com.orbitworkbench.practice.domain.PracticeResult;
 import com.orbitworkbench.practice.domain.PracticeSource;
+import com.orbitworkbench.practice.domain.ReviewDateSource;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -73,6 +74,7 @@ public final class PracticeDtos {
             String referenceAnswer,
             MasteryStatus masteryStatus,
             LocalDate nextReviewDate,
+            ReviewDateSource reviewDateSource,
             boolean archived,
             Instant createdAt,
             Instant updatedAt,
@@ -106,7 +108,8 @@ public final class PracticeDtos {
             return new ItemResponse(
                     row.getItemId(), row.getSourceType(), row.getSourceId(), row.getTopic(),
                     row.getQuestion(), row.getReferenceAnswer(), row.getMasteryStatus(),
-                    row.getNextReviewDate(), row.isArchived(), row.getCreatedAt(), row.getUpdatedAt(),
+                    row.getNextReviewDate(), row.getReviewDateSource(), row.isArchived(),
+                    row.getCreatedAt(), row.getUpdatedAt(),
                     row.getAttemptCount() == null ? 0L : row.getAttemptCount(),
                     row.getLastAttemptAt(), row.getLastResult(), row.getLastSelfScore(),
                     consecutivePassed, row.getSourceSessionId(), row.getSourceSessionTitle(),

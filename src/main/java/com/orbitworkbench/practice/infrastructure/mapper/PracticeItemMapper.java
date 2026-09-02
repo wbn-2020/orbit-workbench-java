@@ -4,6 +4,7 @@ import com.orbitworkbench.practice.domain.MasteryStatus;
 import com.orbitworkbench.practice.domain.PracticeItemRecord;
 import com.orbitworkbench.practice.domain.PracticeItemRow;
 import com.orbitworkbench.practice.domain.PracticeSource;
+import com.orbitworkbench.practice.domain.ReviewDateSource;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -51,6 +52,7 @@ public interface PracticeItemMapper {
             @Param("userId") Long userId,
             @Param("mastery") MasteryStatus mastery,
             @Param("nextReviewDate") LocalDate nextReviewDate,
+            @Param("reviewDateSource") ReviewDateSource reviewDateSource,
             @Param("updatedAt") Instant updatedAt);
 
     int updateArchived(
@@ -65,6 +67,7 @@ public interface PracticeItemMapper {
             @Param("topic") String topic,
             @Param("referenceAnswer") String referenceAnswer,
             @Param("nextReviewDate") LocalDate nextReviewDate,
+            @Param("reviewDateSource") ReviewDateSource reviewDateSource,
             @Param("expectedUpdatedAt") Instant expectedUpdatedAt,
             @Param("updatedAt") Instant updatedAt);
 }
