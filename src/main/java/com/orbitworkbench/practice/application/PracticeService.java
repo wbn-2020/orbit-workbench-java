@@ -29,6 +29,7 @@ import com.orbitworkbench.practice.infrastructure.mapper.PracticeItemMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -55,6 +56,11 @@ public class PracticeService {
     /** 计入已掌握的每次通过所要求的最低自评。 */
     public static final int MASTERED_SELF_SCORE = 80;
     public static final int MAX_QUESTION_CHARS = 4000;
+    /**
+     * 复习日阶梯（`15` §11 第二条，C-03e）：末尾连续「答通」第 n 次即取第 n 档，超出档位停在最后一档。
+     * 没答通（{@code RETRY} / {@code PARTIAL}）回落到第 1 档，与 §6 里「一次 RETRY 或 PARTIAL 即中断」同一口径。
+     */
+    static final List<Integer> REVIEW_LADDER_DAYS = List.of(1, 3, 7, 14);
 
     /** 报告四类清单 → 条目归类名。这些名字就是报告里那一段的名字，不额外发明维度。 */
     private static final Map<String, String> REPORT_CATEGORIES = new LinkedHashMap<>();
@@ -128,7 +134,8 @@ public class PracticeService {
         }
         Instant lastAttemptAt = attemptMapper.lastAttemptAtByUser(userId, archivedValue);
         return new PracticeSummaryResponse(total, newCount, learning, mastered, total > 0,
-                List.copyOf(topics), lastAttemptAt, MASTERED_STREAK, MASTERED_SELF_SCORE);
+                List.copyOf(topics), lastAttemptAt, MASTERED_STREAK, MASTERED_SELF_SCORE,
+                REVIEW_LADDER_DAYS);
     }
 
     @Transactional(readOnly = true)
@@ -227,7 +234,12 @@ public class PracticeService {
                 List.copyOf(topics), note);
     }
 
-    /** 提交一次重练：只新增尝试，再按尝试历史重算并落回掌握状态。 */
+    /**
+     * 提交一次重练：只新增尝试，再按尝试历史重算并落回掌握状态，同时按阶梯推进复习日（`15` §11）。
+     *
+     * <p>推进复习日是这一步的既定副作用：表里没有列能区分「用户手设」与「规则算出」，
+     * 所以此前手工设定的复习日会在这里被覆盖，界面对这一条必须明说（`15` §11 代价列）。
+     */
     @Transactional
     public ItemDetailResponse addAttempt(Long userId, Long itemId, AttemptRequest request) {
         requireOwned(userId, itemId);
@@ -247,8 +259,9 @@ public class PracticeService {
 
         List<PracticeAttemptRecord> attempts = attemptMapper.listByItem(itemId);
         MasteryStatus status = recompute(attempts);
+        LocalDate nextReviewDate = scheduleReview(attempts);
         Instant now = Instant.now();
-        itemMapper.updateMastery(itemId, userId, status, now);
+        itemMapper.updateAfterAttempt(itemId, userId, status, nextReviewDate, now);
         PracticeItemRow row = requireOwned(userId, itemId);
         return new ItemDetailResponse(ItemResponse.from(row, streakOf(attempts)),
                 attempts.stream().map(AttemptResponse::from).toList());
@@ -317,6 +330,17 @@ public class PracticeService {
 
     private int consecutivePassed(Long itemId) {
         return streakOf(attemptMapper.listByItem(itemId));
+    }
+
+    /** 复习日只由这一次尝试之后的尝试历史决定，与条目上原有的日期无关，因此同一份历史随时可重算出同一结果。 */
+    static LocalDate scheduleReview(List<PracticeAttemptRecord> attempts) {
+        return LocalDate.now().plusDays(ladderDays(streakOf(attempts)));
+    }
+
+    /** 连续答通第 n 次取第 n 档；没答通（n=0）回落到第 1 档。 */
+    static int ladderDays(int streak) {
+        int index = streak <= 0 ? 0 : Math.min(streak, REVIEW_LADDER_DAYS.size()) - 1;
+        return REVIEW_LADDER_DAYS.get(index);
     }
 
     private static int streakOf(List<PracticeAttemptRecord> attempts) {

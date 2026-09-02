@@ -175,9 +175,16 @@
           AND question = #{question}
     </select>
 
-    <update id="updateMastery">
+    <!--
+      掌握状态与复习日都由同一份尝试历史推出，因此放在一条 UPDATE 里落：
+      分两条写会出现「状态已推进、复习日还是旧的」的中间态。
+      next_review_date 无条件写入，覆盖包括用户手设值在内的原值（`15` §11 第二条的代价）。
+    -->
+    <update id="updateAfterAttempt">
         UPDATE practice_item
-        SET mastery_status = #{mastery}, updated_at = #{updatedAt}
+        SET mastery_status = #{mastery},
+            next_review_date = #{nextReviewDate},
+            updated_at = #{updatedAt}
         WHERE id = #{id} AND user_id = #{userId}
     </update>
 

@@ -37,7 +37,12 @@ public final class PracticeDtos {
             @Size(max = 512) String feedback
     ) {}
 
-    /** 用户维护的归类信息；{@code expectedUpdatedAt} 为乐观锁凭据，与简历草稿同口径。 */
+    /**
+     * 用户维护的归类信息；{@code expectedUpdatedAt} 为乐观锁凭据，与简历草稿同口径。
+     *
+     * <p>{@code nextReviewDate} 只保留到下一次提交重练：{@code POST /{id}/attempts} 会按阶梯重新推进它，
+     * 表里没有列区分「用户手设」与「规则推进」（`15` §11），界面必须把这条限制显示出来。
+     */
     public record ClassificationRequest(
             @NotBlank @Size(max = 128) String topic,
             @Size(max = 4000) String referenceAnswer,
@@ -143,6 +148,8 @@ public final class PracticeDtos {
             Instant lastAttemptAt,
             /** 掌握判定的两个阈值随接口下发，界面文案因此不会与 `PracticeService` 走偏。 */
             int masteredStreak,
-            int masteredSelfScore
+            int masteredSelfScore,
+            /** 复习日阶梯（C-03e，`15` §11）：连续答通第 n 次取第 n 档，没答通回落到第一档。 */
+            List<Integer> reviewLadderDays
     ) {}
 }
