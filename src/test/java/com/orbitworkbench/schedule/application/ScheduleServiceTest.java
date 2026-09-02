@@ -13,6 +13,7 @@ import com.orbitworkbench.interview.domain.InterviewSessionRecord;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewSessionMapper;
 import com.orbitworkbench.jobapplication.domain.JobApplicationRecord;
 import com.orbitworkbench.jobapplication.infrastructure.mapper.JobApplicationMapper;
+import com.orbitworkbench.preference.application.PreferenceService;
 import com.orbitworkbench.schedule.api.ScheduleDtos;
 import com.orbitworkbench.schedule.api.ScheduleDtos.AgendaItemResponse;
 import com.orbitworkbench.schedule.api.ScheduleDtos.CreateScheduleRequest;
@@ -26,6 +27,7 @@ import com.orbitworkbench.studyplan.domain.StudyTaskRecord;
 import com.orbitworkbench.studyplan.infrastructure.mapper.StudyTaskMapper;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +47,8 @@ class ScheduleServiceTest {
     private StudyTaskMapper studyTaskMapper;
     @Mock
     private JobApplicationMapper applicationMapper;
+    @Mock
+    private PreferenceService preferenceService;
 
     @InjectMocks
     private ScheduleService service;
@@ -127,6 +131,7 @@ class ScheduleServiceTest {
         application.setInterviewDate(LocalDate.parse("2026-09-03"));
         when(applicationMapper.listWithInterviewDateBetween(eq(1L), any(), any()))
                 .thenReturn(List.of(application));
+        when(preferenceService.timezone(1L)).thenReturn(ZoneId.of("Asia/Shanghai"));
 
         List<AgendaItemResponse> items = service.agenda(1L, T, T.plusSeconds(30L * 86400));
 
@@ -138,6 +143,8 @@ class ScheduleServiceTest {
         assertEquals(T.plusSeconds(86400 + 45 * 60), first.endAt());
         assertEquals("/interviews/50", first.resourceRoute());
         assertTrue(items.get(2).allDay());
+        assertEquals(Instant.parse("2026-09-01T16:00:00Z"), items.get(2).startAt());
+        assertEquals(Instant.parse("2026-09-02T16:00:00Z"), items.get(3).startAt());
         assertEquals("/study-plan", items.get(2).resourceRoute());
         assertEquals("美团 · 后端", items.get(3).title());
     }

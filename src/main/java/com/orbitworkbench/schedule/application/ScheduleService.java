@@ -4,6 +4,7 @@ import com.orbitworkbench.interview.domain.InterviewSessionRecord;
 import com.orbitworkbench.interview.infrastructure.mapper.InterviewSessionMapper;
 import com.orbitworkbench.jobapplication.domain.JobApplicationRecord;
 import com.orbitworkbench.jobapplication.infrastructure.mapper.JobApplicationMapper;
+import com.orbitworkbench.preference.application.PreferenceService;
 import com.orbitworkbench.schedule.api.ScheduleDtos.AgendaItemResponse;
 import com.orbitworkbench.schedule.api.ScheduleDtos.CreateScheduleRequest;
 import com.orbitworkbench.schedule.api.ScheduleDtos.ScheduleEventResponse;
@@ -19,7 +20,7 @@ import com.orbitworkbench.studyplan.infrastructure.mapper.StudyTaskMapper;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -38,15 +39,18 @@ public class ScheduleService {
     private final InterviewSessionMapper interviewMapper;
     private final StudyTaskMapper studyTaskMapper;
     private final JobApplicationMapper applicationMapper;
+    private final PreferenceService preferenceService;
 
     public ScheduleService(ScheduleEventMapper scheduleMapper,
                            InterviewSessionMapper interviewMapper,
                            StudyTaskMapper studyTaskMapper,
-                           JobApplicationMapper applicationMapper) {
+                           JobApplicationMapper applicationMapper,
+                           PreferenceService preferenceService) {
         this.scheduleMapper = scheduleMapper;
         this.interviewMapper = interviewMapper;
         this.studyTaskMapper = studyTaskMapper;
         this.applicationMapper = applicationMapper;
+        this.preferenceService = preferenceService;
     }
 
     @Transactional
@@ -100,6 +104,7 @@ public class ScheduleService {
             throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,
                     "日程查询需要有效的起止时间");
         }
+        ZoneId timezone = preferenceService.timezone(userId);
         List<AgendaItemResponse> items = new ArrayList<>();
 
         for (ScheduleEventRecord custom : scheduleMapper.listCustomBetween(userId, from, to)) {
@@ -120,10 +125,10 @@ public class ScheduleService {
                     "/interviews/" + session.getId()));
         }
 
-        LocalDate fromDate = LocalDate.ofInstant(from, ZoneOffset.UTC);
-        LocalDate toDate = LocalDate.ofInstant(to, ZoneOffset.UTC);
+        LocalDate fromDate = LocalDate.ofInstant(from, timezone);
+        LocalDate toDate = LocalDate.ofInstant(to, timezone);
         for (StudyTaskRecord task : studyTaskMapper.listActiveByDueRange(userId, fromDate, toDate)) {
-            Instant start = task.getDueDate().atStartOfDay(ZoneOffset.UTC).toInstant();
+            Instant start = task.getDueDate().atStartOfDay(timezone).toInstant();
             items.add(new AgendaItemResponse(
                     ScheduleSourceType.STUDY_TASK.name(), task.getId(), task.getTitle(),
                     start, start, true, ScheduleStatus.PLANNED.name(), "/study-plan"));
@@ -131,7 +136,7 @@ public class ScheduleService {
 
         for (JobApplicationRecord application
                 : applicationMapper.listWithInterviewDateBetween(userId, fromDate, toDate)) {
-            Instant start = application.getInterviewDate().atStartOfDay(ZoneOffset.UTC).toInstant();
+            Instant start = application.getInterviewDate().atStartOfDay(timezone).toInstant();
             String title = (application.getCompany() == null ? "" : application.getCompany())
                     + (application.getRole() == null || application.getCompany() == null
                         ? "" : " · ") + (application.getRole() == null ? "" : application.getRole());
