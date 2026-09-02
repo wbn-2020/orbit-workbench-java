@@ -21,6 +21,14 @@ public record WebSearchDecision(WebSearchMode effective, boolean degraded, Strin
         return effective != WebSearchMode.DISABLED;
     }
 
+    /** 落进 {@code interview_session.web_search_applied} 的结论，三值固定，供界面标注。 */
+    public String outcome() {
+        if (effective != WebSearchMode.DISABLED) {
+            return "APPLIED";
+        }
+        return degraded ? "DEGRADED" : "NOT_REQUESTED";
+    }
+
     public static WebSearchDecision resolve(WebSearchMode requested, AiConnectionRuntimeConfig connection) {
         WebSearchMode want = requested == null ? WebSearchMode.DISABLED : requested;
         if (want == WebSearchMode.DISABLED) {

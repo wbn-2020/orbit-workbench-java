@@ -66,6 +66,13 @@ public final class InterviewDtos {
             int factCount
     ) {}
 
+    public record WebSearchOutcomeResponse(
+            String requested,
+            String dialect,
+            String applied,
+            String note
+    ) {}
+
     public record SessionResponse(
             Long id,
             String title,
@@ -77,6 +84,7 @@ public final class InterviewDtos {
             Long aiConnectionId,
             String aiModel,
             String webSearchPolicy,
+            WebSearchOutcomeResponse webSearchOutcome,
             String targetRole,
             String targetExperienceBand,
             Integer questionLimit,
@@ -103,6 +111,7 @@ public final class InterviewDtos {
                     record.getAiConnectionIdSnapshot(),
                     record.getAiModelSnapshot(),
                     record.getWebSearchPolicy(),
+                    webSearchOutcome(record),
                     record.getTargetRole(),
                     record.getTargetExperienceBand(),
                     record.getQuestionLimit(),
@@ -116,6 +125,15 @@ public final class InterviewDtos {
                     record.getEndedAt(),
                     record.getCreatedAt(),
                     record.getUpdatedAt());
+        }
+
+        /** 请求档位、当次用的形状、实际是否联网与原因一起回给界面，前端不再自己拼。 */
+        private static WebSearchOutcomeResponse webSearchOutcome(InterviewSessionRecord record) {
+            if (record.getWebSearchApplied() == null && record.getWebSearchPolicy() == null) {
+                return null;
+            }
+            return new WebSearchOutcomeResponse(record.getWebSearchPolicy(),
+                    record.getWebSearchDialect(), record.getWebSearchApplied(), record.getWebSearchNote());
         }
 
         private static List<ProjectBindingSnapshotResponse> parseBindings(String json) {

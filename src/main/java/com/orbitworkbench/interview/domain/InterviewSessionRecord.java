@@ -17,6 +17,9 @@ public class InterviewSessionRecord {
     private Long aiConnectionIdSnapshot;
     private String aiModelSnapshot;
     private String webSearchPolicy;
+    private String webSearchDialect;
+    private String webSearchApplied;
+    private String webSearchNote;
     private String targetRole;
     private String targetExperienceBand;
     private Integer questionLimit;
@@ -64,6 +67,13 @@ public class InterviewSessionRecord {
     public void setAiModelSnapshot(String aiModelSnapshot) { this.aiModelSnapshot = aiModelSnapshot; }
     public String getWebSearchPolicy() { return webSearchPolicy; }
     public void setWebSearchPolicy(String webSearchPolicy) { this.webSearchPolicy = webSearchPolicy; }
+
+    public String getWebSearchDialect() { return webSearchDialect; }
+    public void setWebSearchDialect(String webSearchDialect) { this.webSearchDialect = webSearchDialect; }
+    public String getWebSearchApplied() { return webSearchApplied; }
+    public void setWebSearchApplied(String webSearchApplied) { this.webSearchApplied = webSearchApplied; }
+    public String getWebSearchNote() { return webSearchNote; }
+    public void setWebSearchNote(String webSearchNote) { this.webSearchNote = webSearchNote; }
     public String getTargetRole() { return targetRole; }
     public void setTargetRole(String targetRole) { this.targetRole = targetRole; }
     public String getTargetExperienceBand() { return targetExperienceBand; }

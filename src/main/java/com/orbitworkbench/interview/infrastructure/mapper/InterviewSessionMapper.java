@@ -10,6 +10,16 @@ public interface InterviewSessionMapper {
 
     void insert(InterviewSessionRecord record);
 
+    /**
+     * 出题时把实际联网结论写回会话：这是历史事实，不能等读的时候再按连接当前声明推算
+     * （ADR-0012）。只更新这三列，不碰 updated_at，免得干扰既有乐观锁语义。
+     */
+    int updateWebSearchOutcome(
+            @Param("id") Long id,
+            @Param("dialect") String dialect,
+            @Param("applied") String applied,
+            @Param("note") String note);
+
     InterviewSessionRecord findById(@Param("id") Long id);
 
     List<InterviewSessionRecord> listByUser(

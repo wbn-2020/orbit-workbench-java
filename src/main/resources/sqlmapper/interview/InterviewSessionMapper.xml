@@ -16,6 +16,9 @@
         <result property="aiConnectionIdSnapshot" column="ai_connection_id_snapshot"/>
         <result property="aiModelSnapshot" column="ai_model_snapshot"/>
         <result property="webSearchPolicy" column="web_search_policy"/>
+        <result property="webSearchDialect" column="web_search_dialect"/>
+        <result property="webSearchApplied" column="web_search_applied"/>
+        <result property="webSearchNote" column="web_search_note"/>
         <result property="targetRole" column="target_role"/>
         <result property="targetExperienceBand" column="target_experience_band"/>
         <result property="questionLimit" column="question_limit"/>
@@ -34,7 +37,7 @@
         id, user_id, title, topic_mode, form, round,
         interviewer_id, interviewer_name_snapshot, interviewer_snapshot_json,
         project_bindings_json,
-        ai_connection_id_snapshot, ai_model_snapshot, web_search_policy,
+        ai_connection_id_snapshot, ai_model_snapshot, web_search_policy, web_search_dialect, web_search_applied, web_search_note,
         target_role, target_experience_band,
         question_limit, follow_up_limit, turn_limit, duration_limit_minutes,
         scheduled_at,
@@ -107,4 +110,12 @@
         WHERE id = #{id}
           AND status = #{expectedStatus}
     </update>
+    <update id="updateWebSearchOutcome">
+        UPDATE interview_session
+        SET web_search_dialect = #{dialect},
+            web_search_applied = #{applied},
+            web_search_note = #{note}
+        WHERE id = #{id}
+    </update>
+
 </mapper>

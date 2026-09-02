@@ -123,6 +123,9 @@ public class InterviewQuestionService {
         // 不能先推半个 SSE 再报错——那时题号已经发给前端了。
         WebSearchDecision webSearch = WebSearchDecision.resolve(
                 WebSearchMode.parse(session.getWebSearchPolicy()), route.primary());
+        // 结论当场固化到会话：连接的联网形状以后可能被改，历史会话不能跟着被改写（V32）。
+        sessionMapper.updateWebSearchOutcome(session.getId(),
+                route.primary().webSearchDialect().name(), webSearch.outcome(), webSearch.reason());
         PromptPair pair = buildPrompt(session, turnMapper.listBySession(session.getId()),
                 turnType, request.instruction());
         Long sessionIdValue = session.getId();
