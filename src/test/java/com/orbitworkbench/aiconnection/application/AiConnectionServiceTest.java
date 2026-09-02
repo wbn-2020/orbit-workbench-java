@@ -285,6 +285,7 @@ class AiConnectionServiceTest {
                 "test-model",
                 apiKey,
                 30000,
+                null,
                 null);
     }
 

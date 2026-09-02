@@ -15,6 +15,8 @@ import com.orbitworkbench.aiconnection.domain.AiProtocol;
 import com.orbitworkbench.aiconnection.domain.ConnectionAddressNormalizer;
 import com.orbitworkbench.aiconnection.domain.ConnectionAddressNormalizer.NormalizedAddress;
 import com.orbitworkbench.aiconnection.domain.ConnectionTestRecord;
+import com.orbitworkbench.ai.application.WebSearchDialect;
+import com.orbitworkbench.aiconnection.domain.ModelCapabilities;
 import com.orbitworkbench.aiconnection.infrastructure.mapper.AiConnectionMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
@@ -111,7 +113,7 @@ public class AiConnectionService {
         }
         AiConnectionRecord record = newRecord(request.providerType(), request.name(), request.baseUrl(),
                 request.endpointPath(), request.protocol(), request.modelName(), request.apiKey(),
-                request.timeoutMs(), request.enabled());
+                request.timeoutMs(), request.enabled(), request.webSearchDialect());
         mapper.insertConnection(record);
         mapper.insertModelProfile(record);
         return ConnectionResponse.from(require(record.getId()));
@@ -137,12 +139,15 @@ public class AiConnectionService {
                 || !old.getProtocol().equalsIgnoreCase(normalizedProtocol)
                 || !old.getModelName().equals(request.modelName().trim())
                 || old.getTimeoutMs() != normalizedTimeout(request.timeoutMs())
-                || credentialChanged;
+                || credentialChanged
+                // 能力声明变了也要重新验证：声明错一次的后果是往上游发它其实不认的参数。
+                || ModelCapabilities.parse(old.getCapabilitiesJson()).webSearchDialect()
+                != WebSearchDialect.parse(request.webSearchDialect());
         AiConnectionRecord record = newRecord(request.providerType(), request.name(), request.baseUrl(),
                 request.endpointPath(), request.protocol(), request.modelName(),
                 request.apiKey() == null || request.apiKey().isBlank()
                         ? null : request.apiKey(),
-                request.timeoutMs(), request.enabled());
+                request.timeoutMs(), request.enabled(), request.webSearchDialect());
         record.setId(id);
         record.setModelProfileId(old.getModelProfileId());
         record.setEnabled(request.enabled() == null ? old.isEnabled() : request.enabled());
@@ -184,9 +189,10 @@ public class AiConnectionService {
         }
         String key = cipher.decrypt(record.getCredentialCiphertext(), record.getCredentialIv(),
                 record.getCredentialKeyVersion());
+        ModelCapabilities capabilities = ModelCapabilities.parse(record.getCapabilitiesJson());
         return new AiConnectionRuntimeConfig(record.getId(), record.getModelProfileId(), record.getName(),
                 record.getBaseUrl(), record.getEndpointPath(), record.getProtocol(),
-                record.getModelName(), key, record.getTimeoutMs());
+                record.getModelName(), key, record.getTimeoutMs(), capabilities.webSearchDialect());
     }
 
     public AiConnectionRuntimeConfig getRuntimeConfig(Long id) {
@@ -196,7 +202,7 @@ public class AiConnectionService {
     public ConnectionTestResponse testDraft(DraftTestRequest request) {
         AiConnectionRecord record = newRecord(request.providerType(), request.name(), request.baseUrl(),
                 request.endpointPath(), request.protocol(), request.modelName(), request.apiKey(),
-                request.timeoutMs(), true);
+                request.timeoutMs(), true, null);
         return executeTest(record, request.streaming(), request.testPrompt(), request.apiKey());
     }
 
@@ -304,7 +310,7 @@ public class AiConnectionService {
 
     private AiConnectionRecord newRecord(String providerType, String name, String baseUrl, String endpointPath,
                                          String protocol, String modelName, String apiKey, Integer timeoutMs,
-                                         Boolean enabled) {
+                                         Boolean enabled, String webSearchDialect) {
         String provider = providerType.trim().toUpperCase();
         Long providerId = mapper.findProviderId(provider);
         if (providerId == null) {
@@ -325,7 +331,8 @@ public class AiConnectionService {
         record.setModelName(modelName.trim());
         record.setModelDisplayName(modelName.trim());
         record.setSupportedProtocols("[\"" + record.getProtocol() + "\"]");
-        record.setCapabilitiesJson("{\"supportsStreaming\":true}");
+        // 能力由用户在连接上声明，不自动探测：探测要发真实付费请求，而「网关是否透传」这种事探测也不可靠。
+        record.setCapabilitiesJson(new ModelCapabilities(WebSearchDialect.parse(webSearchDialect)).toJson());
         record.setDefaultParametersJson("{}");
         if (encrypted != null) {
             record.setCredentialCiphertext(encrypted.ciphertext());
@@ -455,5 +462,15 @@ public class AiConnectionService {
 
     public record AiConnectionRuntimeConfig(Long connectionId, Long modelProfileId, String connectionName,
                                              String baseUrl, String endpointPath, String protocol,
-                                             String modelName, String apiKey, int timeoutMs) {}
+                                             String modelName, String apiKey, int timeoutMs,
+                                             WebSearchDialect webSearchDialect) {
+
+        /** 能力未声明时一律按 NONE 处理：默认值必须是关，否则老调用点会以为搜索已生效。 */
+        public AiConnectionRuntimeConfig(Long connectionId, Long modelProfileId, String connectionName,
+                                         String baseUrl, String endpointPath, String protocol,
+                                         String modelName, String apiKey, int timeoutMs) {
+            this(connectionId, modelProfileId, connectionName, baseUrl, endpointPath, protocol,
+                    modelName, apiKey, timeoutMs, WebSearchDialect.NONE);
+        }
+    }
 }

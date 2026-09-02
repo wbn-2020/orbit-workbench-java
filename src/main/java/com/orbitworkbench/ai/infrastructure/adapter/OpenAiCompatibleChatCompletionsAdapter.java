@@ -10,6 +10,8 @@ import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.ai.application.AiToolCall;
 import com.orbitworkbench.ai.application.AiToolDefinition;
 import com.orbitworkbench.ai.application.AiUsage;
+import com.orbitworkbench.ai.application.WebSearchDialect;
+import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.shared.api.ErrorCode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -62,7 +64,42 @@ public class OpenAiCompatibleChatCompletionsAdapter
                     .toList());
             body.put("tool_choice", "auto");
         }
+        applyWebSearch(body, invocation);
         return body;
+    }
+
+    /**
+     * 联网参数按连接声明的形状填（ADR-0012）。Chat Completions 这一路三家参数名完全不同，
+     * 所以形状是数据不是 if(域名)：业务层永远不会出现供应商参数名。
+     *
+     * <p>声明与协议不符时直接报错，不能"跳过不发"——静默跳过正是本次要消除的那个
+     * 「选择器有值、上游没行为」的形态。
+     */
+    private void applyWebSearch(Map<String, Object> body, AiInvocation invocation) {
+        WebSearchMode mode = invocation.webSearch();
+        WebSearchDialect dialect = invocation.connection().webSearchDialect();
+        if (mode == WebSearchMode.DISABLED) {
+            return;
+        }
+        boolean forced = mode == WebSearchMode.ON_DEMAND;
+        switch (dialect) {
+            case OPENAI_CHAT_WEB_SEARCH_OPTIONS -> {
+                Map<String, Object> options = new LinkedHashMap<>();
+                options.put("search_context_size", "medium");
+                body.put("web_search_options", options);
+            }
+            case QWEN_CHAT_ENABLE_SEARCH -> {
+                body.put("enable_search", true);
+                if (forced) {
+                    body.put("search_options", Map.of("forced_search", true));
+                }
+            }
+            case XAI_CHAT_SEARCH_PARAMETERS -> body.put("search_parameters",
+                    Map.of("mode", forced ? "on" : "auto"));
+            default -> throw new AiProviderException(ErrorCode.UNSUPPORTED_CAPABILITY,
+                    HttpStatus.UNPROCESSABLE_ENTITY, null,
+                    "连接声明的联网形状 " + dialect + " 不适用于 Chat Completions 协议", null);
+        }
     }
 
     @Override

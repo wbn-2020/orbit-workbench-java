@@ -1,6 +1,7 @@
 package com.orbitworkbench.aiconnection.api;
 
 import com.orbitworkbench.aiconnection.domain.AiConnectionRecord;
+import com.orbitworkbench.aiconnection.domain.ModelCapabilities;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -20,7 +21,8 @@ public final class AiConnectionDtos {
             @NotBlank @Size(max = 128) String modelName,
             @Size(max = 512) String apiKey,
             @Min(1000) @Max(120000) Integer timeoutMs,
-            Boolean enabled
+            Boolean enabled,
+            String webSearchDialect
     ) {}
 
     public record UpdateConnectionRequest(
@@ -33,7 +35,8 @@ public final class AiConnectionDtos {
             @NotBlank @Size(max = 128) String modelName,
             @Size(max = 512) String apiKey,
             @Min(1000) @Max(120000) Integer timeoutMs,
-            Boolean enabled
+            Boolean enabled,
+            String webSearchDialect
     ) {}
 
     public record EnabledRequest(boolean enabled,
@@ -72,16 +75,22 @@ public final class AiConnectionDtos {
             String lastErrorCode,
             String lastErrorSummary,
             Instant createdAt,
-            Instant updatedAt
+            Instant updatedAt,
+            String webSearchDialect,
+            boolean webSearchSupported,
+            boolean forcedSearchSupported
     ) {
         public static ConnectionResponse from(AiConnectionRecord c) {
+            ModelCapabilities capabilities = ModelCapabilities.parse(c.getCapabilitiesJson());
             return new ConnectionResponse(c.getId(), c.getConfigurationVersion(),
                     c.getName(), c.getProviderType(), c.getBaseUrl(),
                     c.getEndpointPath(), c.getProtocol(), c.getModelName(),
                     c.getCredentialCiphertext() == null ? null : "****",
                     c.isEnabled(), c.getTimeoutMs(), c.getLastTestStatus(), c.getLastTestLatencyMs(),
                     c.getLastTestedAt(), c.getLastErrorCode(), c.getLastErrorSummary(),
-                    c.getCreatedAt(), c.getUpdatedAt());
+                    c.getCreatedAt(), c.getUpdatedAt(), capabilities.webSearchDialect().name(),
+                    capabilities.webSearchDialect().supportsWebSearch(),
+                    capabilities.webSearchDialect().supportsForcedSearch());
         }
     }
 

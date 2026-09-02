@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
+import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.interview.domain.InterviewReportRecord;
 import com.orbitworkbench.interview.domain.InterviewSessionRecord;
@@ -99,7 +100,7 @@ class InterviewReportServiceTest {
         assertEquals(ReportStatus.REPORT_READY.name(), response.report().status());
         assertEquals(84, response.report().totalScore());
         verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_REPORT), eq(7L), eq(5L),
-                any(), any(), anyInt(), any(Duration.class));
+                any(), any(), anyInt(), any(Duration.class), eq(WebSearchMode.DISABLED));
         verify(reportMapper).markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
                 any(), any(), any(), any(), any(), any(), any(), any());
         verify(sessionMapper).updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
@@ -140,7 +141,7 @@ class InterviewReportServiceTest {
 
         assertThrows(ApiException.class, () -> service.generate(7L, 21L, 5L));
         verify(aiScenarioExecution, never()).executeText(any(), any(), any(), any(), any(),
-                anyInt(), any());
+                anyInt(), any(), any());
     }
 
     @Test
@@ -220,7 +221,7 @@ class InterviewReportServiceTest {
         stubSessionAndPendingReport();
         String noisy = "上游返回 " + "很长".repeat(600) + "\nBearer sk-should-not-persist";
         when(aiScenarioExecution.executeText(any(), any(), any(), any(), any(), anyInt(),
-                any(Duration.class))).thenThrow(new ApiException(
+                any(Duration.class), any())).thenThrow(new ApiException(
                         HttpStatus.BAD_GATEWAY, ErrorCode.UPSTREAM_UNAVAILABLE, noisy));
         when(reportMapper.findBySessionId(21L)).thenReturn(report(ReportStatus.REPORT_PENDING));
 
@@ -263,7 +264,7 @@ class InterviewReportServiceTest {
 
     private void stubModelOutput(String text) {
         when(aiScenarioExecution.executeText(any(), any(), any(), any(), any(), anyInt(),
-                any(Duration.class))).thenReturn(text);
+                any(Duration.class), any())).thenReturn(text);
     }
 
     private InterviewSessionRecord session(InterviewSessionStatus status) {

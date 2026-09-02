@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.ai.application.AiErrorSanitizer;
 import com.orbitworkbench.ai.application.AiOutputCleaner;
+import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.interview.api.InterviewDtos.ReportResponse;
@@ -128,8 +129,11 @@ public class InterviewReportService {
 
         String modelOutput;
         try {
+            // 报告沿用会话上的联网意愿：一场面试的出题与评分必须处在同样的信息条件下，
+            // 否则「按最新资料出的题」会配一份「只按站内资料评的分」。生效结论记在调用审计里。
             modelOutput = aiScenarioExecution.executeText(AiScenario.INTERVIEW_REPORT, userId,
-                    connectionId, SYSTEM_PROMPT, userPrompt, MAX_OUTPUT_TOKENS, MODEL_TIMEOUT);
+                    connectionId, SYSTEM_PROMPT, userPrompt, MAX_OUTPUT_TOKENS, MODEL_TIMEOUT,
+                    WebSearchMode.parse(session.getWebSearchPolicy()));
             persistScoredReport(session, parseScoredReport(modelOutput));
         } catch (ApiException exception) {
             reportMapper.markFailed(session.getId(),

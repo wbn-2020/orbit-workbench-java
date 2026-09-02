@@ -4,6 +4,8 @@ import com.orbitworkbench.ai.application.AiCallFailures;
 import com.orbitworkbench.ai.application.AiInvocation;
 import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.ai.application.ModelGateway;
+import com.orbitworkbench.ai.application.WebSearchDecision;
+import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
 import com.orbitworkbench.aiconnection.application.AiScenarioRouter.ResolvedRoute;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
@@ -51,14 +53,26 @@ public class AiScenarioExecutionService {
     public String executeText(AiScenario scenario, Long userId, Long pinnedConnectionId,
                               String systemPrompt, String userPrompt,
                               int maxOutputTokens, Duration timeout) {
+        return executeText(scenario, userId, pinnedConnectionId, systemPrompt, userPrompt,
+                maxOutputTokens, timeout, WebSearchMode.DISABLED);
+    }
+
+    /**
+     * @param requestedWebSearch 业务侧的联网意愿。结论在主用账户上一次算清并写进审计快照，
+     *     「必须联网」在这一步就直接拒绝，不会先生成一半再失败。
+     */
+    public String executeText(AiScenario scenario, Long userId, Long pinnedConnectionId,
+                              String systemPrompt, String userPrompt,
+                              int maxOutputTokens, Duration timeout, WebSearchMode requestedWebSearch) {
         ResolvedRoute route = router.resolve(userId, scenario, pinnedConnectionId);
+        WebSearchDecision webSearch = WebSearchDecision.resolve(requestedWebSearch, route.primary());
         int requestChars = chars(systemPrompt) + chars(userPrompt);
         Long auditId = recorder.start(userId, scenario, route, requestChars,
-                recorder.snapshotJson(scenario, route, maxOutputTokens, true));
+                recorder.snapshotJson(scenario, route, maxOutputTokens, true, webSearch));
         long start = System.nanoTime();
 
         Attempt first = attempt(scenario, route.primary(), systemPrompt, userPrompt,
-                maxOutputTokens, timeout, start);
+                maxOutputTokens, timeout, start, webSearch.effective());
         if (first.failure() == null) {
             recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_SUCCEEDED, null,
                     first.latencyMs(), requestChars, first.text().length(),
@@ -70,8 +84,10 @@ public class AiScenarioExecutionService {
             log.warn("场景 {} 主用账户 {} 失败（{}），切换到备用账户 {} 重试",
                     scenario, route.primary().connectionId(), first.errorCode(),
                     route.backup().connectionId());
+            // 备用账户的联网形状可能与主用不同，按它自己的声明重算，不能沿用主用的结论。
             Attempt second = attempt(scenario, route.backup(), systemPrompt, userPrompt,
-                    maxOutputTokens, timeout, start);
+                    maxOutputTokens, timeout, start,
+                    WebSearchDecision.resolve(requestedWebSearch, route.backup()).effective());
             if (second.failure() == null) {
                 recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_SUCCEEDED, null,
                         second.latencyMs(), requestChars, second.text().length(),
@@ -92,11 +108,11 @@ public class AiScenarioExecutionService {
 
     private Attempt attempt(AiScenario scenario, AiConnectionRuntimeConfig connection,
                             String systemPrompt, String userPrompt, int maxOutputTokens,
-                            Duration timeout, long start) {
+                            Duration timeout, long start, WebSearchMode webSearch) {
         StringBuilder text = new StringBuilder();
         try {
             modelGateway.stream(new AiInvocation(connection, systemPrompt, userPrompt,
-                            null, null, true, maxOutputTokens))
+                            null, null, true, maxOutputTokens).withWebSearch(webSearch))
                     .doOnNext(event -> {
                         if (event.text() != null) {
                             text.append(event.text());

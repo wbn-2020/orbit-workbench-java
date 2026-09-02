@@ -7,6 +7,8 @@ import com.orbitworkbench.ai.application.AiInvocation;
 import com.orbitworkbench.ai.application.AiOutputCleaner;
 import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.ai.application.ModelGateway;
+import com.orbitworkbench.ai.application.WebSearchDecision;
+import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.aiconnection.application.AiCallAuditRecorder;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.application.AiScenarioRouter;
@@ -117,29 +119,34 @@ public class InterviewQuestionService {
         }
         AiScenarioRouter.ResolvedRoute route = aiScenarioRouter.resolve(
                 userId, AiScenario.INTERVIEW_QUESTION, session.getAiConnectionIdSnapshot());
+        // 联网结论在开流之前算：「必须联网」而这条连接做不到时要回一个干净的 422，
+        // 不能先推半个 SSE 再报错——那时题号已经发给前端了。
+        WebSearchDecision webSearch = WebSearchDecision.resolve(
+                WebSearchMode.parse(session.getWebSearchPolicy()), route.primary());
         PromptPair pair = buildPrompt(session, turnMapper.listBySession(session.getId()),
                 turnType, request.instruction());
         Long sessionIdValue = session.getId();
 
-        return Flux.defer(() -> streamEvents(userId, sessionIdValue, turnType, route, pair));
+        return Flux.defer(() -> streamEvents(userId, sessionIdValue, turnType, route, pair, webSearch));
     }
 
     private Flux<ServerSentEvent<String>> streamEvents(Long userId, Long sessionId,
                                                        InterviewTurnType turnType,
                                                        AiScenarioRouter.ResolvedRoute route,
-                                                       PromptPair pair) {
+                                                       PromptPair pair,
+                                                       WebSearchDecision webSearch) {
         StringBuilder buffer = new StringBuilder();
         int requestChars = pair.system().length() + pair.user().length();
         long start = System.nanoTime();
         Long auditId = aiCallAuditRecorder.start(userId, AiScenario.INTERVIEW_QUESTION, route,
                 requestChars, aiCallAuditRecorder.snapshotJson(AiScenario.INTERVIEW_QUESTION, route,
-                        MAX_OUTPUT_TOKENS, true));
+                        MAX_OUTPUT_TOKENS, true, webSearch));
         int turnNo = turnMapper.countBySession(sessionId) + 1;
         ServerSentEvent<String> startEvent = sse("start", "{\"turnNo\":" + turnNo
                 + ",\"type\":\"" + turnType + "\"}");
         Flux<ServerSentEvent<String>> body = modelGateway
                 .stream(new AiInvocation(route.primary(), pair.system(), pair.user(),
-                        null, null, true, MAX_OUTPUT_TOKENS))
+                        null, null, true, MAX_OUTPUT_TOKENS).withWebSearch(webSearch.effective()))
                 .mapNotNull(AiStreamEvent::text)
                 .map(text -> {
                     buffer.append(text);

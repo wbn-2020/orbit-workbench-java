@@ -2,6 +2,7 @@ package com.orbitworkbench.aiconnection.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.orbitworkbench.ai.application.WebSearchDecision;
 import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.aiconnection.domain.CallAuditRecord;
@@ -83,6 +84,15 @@ public class AiCallAuditRecorder {
     /** 配置快照：只含非敏感的路由与模型参数，供事后解释"这次到底走了哪个账户"。 */
     public String snapshotJson(AiScenario scenario, AiScenarioRouter.ResolvedRoute route,
                                int maxOutputTokens, boolean stream) {
+        return snapshotJson(scenario, route, maxOutputTokens, stream, null);
+    }
+
+    /**
+     * 配置快照要带上联网结论（ADR-0012 决策 4）：请求到的档位、实际生效与否、用的哪种形状。
+     * Qwen 这类网关超限是"不报错也不搜"的，不在每次调用里记 effective，事后根本无法判断那一场到底联网没有。
+     */
+    public String snapshotJson(AiScenario scenario, AiScenarioRouter.ResolvedRoute route,
+                               int maxOutputTokens, boolean stream, WebSearchDecision webSearch) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("scenario", scenario.name());
         snapshot.put("source", route.source());
@@ -93,6 +103,14 @@ public class AiCallAuditRecorder {
         }
         snapshot.put("maxOutputTokens", maxOutputTokens);
         snapshot.put("stream", stream);
+        snapshot.put("webSearchDialect", route.primary().webSearchDialect().name());
+        if (webSearch != null) {
+            snapshot.put("webSearchApplied", webSearch.applied());
+            snapshot.put("webSearchDegraded", webSearch.degraded());
+            if (webSearch.reason() != null) {
+                snapshot.put("webSearchNote", webSearch.reason());
+            }
+        }
         try {
             return objectMapper.writeValueAsString(snapshot);
         } catch (JsonProcessingException exception) {

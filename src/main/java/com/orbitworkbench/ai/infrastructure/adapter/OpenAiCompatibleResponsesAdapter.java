@@ -10,6 +10,8 @@ import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.ai.application.AiToolCall;
 import com.orbitworkbench.ai.application.AiToolDefinition;
 import com.orbitworkbench.ai.application.AiUsage;
+import com.orbitworkbench.ai.application.WebSearchDialect;
+import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.shared.api.ErrorCode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -50,11 +52,32 @@ public class OpenAiCompatibleResponsesAdapter
                 && !invocation.previousResponseId().isBlank()) {
             body.put("previous_response_id", invocation.previousResponseId());
         }
-        if (!invocation.tools().isEmpty()) {
-            body.put("tools", invocation.tools().stream()
-                    .map(this::responsesTool)
-                    .toList());
-            body.put("tool_choice", "auto");
+        List<Map<String, Object>> tools = new ArrayList<>(invocation.tools().stream()
+                .map(this::responsesTool)
+                .toList());
+        // 内置网页检索与函数工具共用同一个 tools 数组，两个都要发时不能各写一次互相覆盖。
+        WebSearchMode mode = invocation.webSearch();
+        WebSearchDialect dialect = invocation.connection().webSearchDialect();
+        if (mode != WebSearchMode.DISABLED) {
+            if (dialect != WebSearchDialect.RESPONSES_TOOL && dialect != WebSearchDialect.RESPONSES_TOOL_FORCED) {
+                throw new AiProviderException(ErrorCode.UNSUPPORTED_CAPABILITY,
+                        HttpStatus.UNPROCESSABLE_ENTITY, null,
+                        "连接声明的联网形状 " + dialect + " 不适用于 Responses 协议", null);
+            }
+            tools.add(Map.of("type", "web_search"));
+            if (mode == WebSearchMode.ON_DEMAND) {
+                if (dialect != WebSearchDialect.RESPONSES_TOOL_FORCED) {
+                    throw new AiProviderException(ErrorCode.UNSUPPORTED_CAPABILITY,
+                            HttpStatus.UNPROCESSABLE_ENTITY, null,
+                            "该联网形状只能由模型自行决定是否检索，无法表达「必须联网」", null);
+                }
+                body.put("tool_choice", Map.of("type", "web_search"));
+            } else {
+                body.put("tool_choice", "auto");
+            }
+        }
+        if (!tools.isEmpty()) {
+            body.put("tools", tools);
         }
         return body;
     }
