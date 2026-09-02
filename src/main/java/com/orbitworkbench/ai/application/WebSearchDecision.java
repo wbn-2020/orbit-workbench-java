@@ -1,7 +1,6 @@
 package com.orbitworkbench.ai.application;
 
 import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
-import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import org.springframework.http.HttpStatus;
 
@@ -39,11 +38,11 @@ public record WebSearchDecision(WebSearchMode effective, boolean degraded, Strin
                 + " / " + connection.modelName() + "）";
         if (want == WebSearchMode.ON_DEMAND) {
             if (!dialect.supportsWebSearch()) {
-                throw unsupported(target + " 未声明联网形状，无法满足「必须联网」。可以改用「自动」，"
+                unsupported(target + " 未声明联网形状，无法满足「必须联网」。可以改用「自动」，"
                         + "或到 AI 连接里确认这条连接的协议与模型到底支持哪种联网方式");
             }
             if (!dialect.supportsForcedSearch()) {
-                throw unsupported(target + " 只能由模型自行决定是否检索，无法保证一定联网。"
+                unsupported(target + " 只能由模型自行决定是否检索，无法保证一定联网。"
                         + "可以改用「自动」，或换一条支持强制检索的连接");
             }
         }
@@ -56,7 +55,9 @@ public record WebSearchDecision(WebSearchMode effective, boolean degraded, Strin
         return new WebSearchDecision(want, false, null);
     }
 
-    private static ApiException unsupported(String message) {
-        return new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, ErrorCode.UNSUPPORTED_CAPABILITY, message);
+    /** 只有一条出口：不返回，必定抛出。签名保留成表达式是为了让调用处的控制流读起来不出意外。 */
+    private static WebSearchDecision unsupported(String message) {
+        // 抛独立类型：报告服务要靠它区分「没发出去」与「上游办砸了」。
+        throw new RequestRejectedException(HttpStatus.UNPROCESSABLE_ENTITY, ErrorCode.UNSUPPORTED_CAPABILITY, message);
     }
 }

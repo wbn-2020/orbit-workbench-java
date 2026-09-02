@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.ai.application.AiErrorSanitizer;
 import com.orbitworkbench.ai.application.AiOutputCleaner;
+import com.orbitworkbench.ai.application.RequestRejectedException;
 import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
@@ -135,6 +136,10 @@ public class InterviewReportService {
                     connectionId, SYSTEM_PROMPT, userPrompt, MAX_OUTPUT_TOKENS, MODEL_TIMEOUT,
                     WebSearchMode.parse(session.getWebSearchPolicy()));
             persistScoredReport(session, parseScoredReport(modelOutput));
+        } catch (RequestRejectedException exception) {
+            // 请求根本没发出去：报告状态不动、也不发通知，只把这个 4xx 原样回给调用方。
+            // 记成「报告生成失败」会谎报后果——用户以为内容丢了，其实一步都没走。
+            throw exception;
         } catch (ApiException exception) {
             reportMapper.markFailed(session.getId(),
                     AiErrorSanitizer.sanitize(exception.getMessage(), null), Instant.now());
