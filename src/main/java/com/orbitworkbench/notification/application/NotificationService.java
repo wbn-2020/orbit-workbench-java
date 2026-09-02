@@ -4,6 +4,7 @@ import com.orbitworkbench.notification.api.NotificationDtos.NotificationResponse
 import com.orbitworkbench.notification.domain.NotificationEvent;
 import com.orbitworkbench.notification.domain.NotificationRecord;
 import com.orbitworkbench.notification.infrastructure.mapper.NotificationMapper;
+import com.orbitworkbench.preference.application.PreferenceService;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.PageResult;
@@ -34,9 +35,11 @@ public class NotificationService {
     public static final String RESOURCE_STUDY_TASK = "STUDY_TASK";
 
     private final NotificationMapper mapper;
+    private final PreferenceService preferenceService;
 
-    public NotificationService(NotificationMapper mapper) {
+    public NotificationService(NotificationMapper mapper, PreferenceService preferenceService) {
         this.mapper = mapper;
+        this.preferenceService = preferenceService;
     }
 
     @Transactional(readOnly = true)
@@ -75,6 +78,11 @@ public class NotificationService {
     public void notify(NotificationEvent event, Long userId, String title, String content,
                        String resourceType, Long resourceId, String resourceRoute,
                        String idempotencyKey) {
+        if (!preferenceService.isNotificationEnabled(userId, event)) {
+            log.info("用户已关闭该类通知，跳过写入，event={} userId={} resourceId={}",
+                    event, userId, resourceId);
+            return;
+        }
         try {
             NotificationRecord record = new NotificationRecord();
             record.setUserId(userId);

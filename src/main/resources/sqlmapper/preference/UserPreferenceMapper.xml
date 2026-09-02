@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.preference.infrastructure.mapper.UserPreferenceMapper">
+    <resultMap id="UserPreferenceMap" type="com.orbitworkbench.preference.domain.UserPreferenceRecord">
+        <id property="userId" column="user_id"/>
+        <result property="notifyReportReady" column="notify_report_ready"/>
+        <result property="notifyStudyDue" column="notify_study_due"/>
+        <result property="notifyInterview" column="notify_interview"/>
+        <result property="notifyImportFailure" column="notify_import_failure"/>
+        <result property="notifyAiFailure" column="notify_ai_failure"/>
+        <result property="timezoneId" column="timezone_id"/>
+        <result property="version" column="version"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        user_id, notify_report_ready, notify_study_due, notify_interview,
+        notify_import_failure, notify_ai_failure, timezone_id, version,
+        created_at, updated_at
+    </sql>
+
+    <insert id="insertIfAbsent">
+        INSERT IGNORE INTO user_preference(user_id, created_at, updated_at)
+        VALUES(#{userId}, #{now}, #{now})
+    </insert>
+
+    <select id="findByUserId" resultMap="UserPreferenceMap">
+        SELECT <include refid="allColumns"/>
+        FROM user_preference
+        WHERE user_id = #{userId}
+    </select>
+
+    <update id="update">
+        UPDATE user_preference
+        SET notify_report_ready = #{record.notifyReportReady},
+            notify_study_due = #{record.notifyStudyDue},
+            notify_interview = #{record.notifyInterview},
+            notify_import_failure = #{record.notifyImportFailure},
+            notify_ai_failure = #{record.notifyAiFailure},
+            timezone_id = #{record.timezoneId},
+            version = version + 1,
+            updated_at = #{record.updatedAt}
+        WHERE user_id = #{record.userId}
+          AND version = #{expectedVersion}
+    </update>
+</mapper>

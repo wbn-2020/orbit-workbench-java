@@ -15,6 +15,7 @@ import com.orbitworkbench.notification.api.NotificationDtos.NotificationResponse
 import com.orbitworkbench.notification.domain.NotificationEvent;
 import com.orbitworkbench.notification.domain.NotificationRecord;
 import com.orbitworkbench.notification.infrastructure.mapper.NotificationMapper;
+import com.orbitworkbench.preference.application.PreferenceService;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.PageResult;
 import java.time.Instant;
@@ -31,6 +32,9 @@ class NotificationServiceTest {
 
     @Mock
     private NotificationMapper mapper;
+
+    @Mock
+    private PreferenceService preferenceService;
 
     @InjectMocks
     private NotificationService service;
@@ -89,6 +93,9 @@ class NotificationServiceTest {
 
     @Test
     void notifyTruncatesTitleAndContentToColumnLimits() {
+        when(preferenceService.isNotificationEnabled(1L, NotificationEvent.INTERVIEW_REPORT_READY))
+                .thenReturn(true);
+
         service.notify(NotificationEvent.INTERVIEW_REPORT_READY, 1L,
                 "长".repeat(200), "多".repeat(600),
                 NotificationService.RESOURCE_INTERVIEW_SESSION, 4L, "/interviews/4/report",
@@ -104,11 +111,25 @@ class NotificationServiceTest {
 
     @Test
     void notifySwallowsMapperFailureSoBusinessFlowContinues() {
+        when(preferenceService.isNotificationEnabled(1L, NotificationEvent.STUDY_TASK_DUE))
+                .thenReturn(true);
         when(mapper.insertIgnore(any())).thenThrow(new RuntimeException("db down"));
 
         service.notify(NotificationEvent.STUDY_TASK_DUE, 1L, "复习任务到期", "x",
                 NotificationService.RESOURCE_STUDY_TASK, 2L, "/study-plan", "STUDY_TASK_DUE:2:2026-08-30");
         // 不抛出即通过：通知写失败不得冒泡到业务调用。
+    }
+
+    @Test
+    void notifySkipsInsertWhenUserDisabledEvent() {
+        when(preferenceService.isNotificationEnabled(1L, NotificationEvent.PROJECT_IMPORT_PARTIAL))
+                .thenReturn(false);
+
+        service.notify(NotificationEvent.PROJECT_IMPORT_PARTIAL, 1L, "导入完成但有失败项", "x",
+                NotificationService.RESOURCE_PROJECT_VERSION, 3L, "/projects/1",
+                "PROJECT_IMPORT_PARTIAL:3");
+
+        verify(mapper, never()).insertIgnore(any());
     }
 
     private static NotificationRecord record(Long id, Instant readAt) {
