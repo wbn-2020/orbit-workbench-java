@@ -59,6 +59,14 @@ class SearchServiceTest {
     }
 
     @Test
+    void overlongQueryIsRejectedBeforeHittingDatabase() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.orbitworkbench.shared.api.ApiException.class,
+                () -> service.search(1L, "a".repeat(SearchService.MAX_QUERY_LENGTH + 1)));
+        verifyNoInteractions(searchMapper);
+    }
+
+    @Test
     void blankQueryReturnsEmpty() {
         SearchResponse response = service.search(1L, "   ");
         assertEquals(0, response.total());
@@ -90,8 +98,87 @@ class SearchServiceTest {
         assertEquals("/interviews/30/report", report.items().get(0).route());
         SearchGroup application = response.groups().stream()
                 .filter(g -> g.type().equals("APPLICATION")).findFirst().orElseThrow();
-        assertEquals("/applications", application.items().get(0).route());
+        assertEquals("/applications?focus=50", application.items().get(0).route());
         assertTrue(response.groups().stream().noneMatch(g -> g.items().isEmpty()));
+    }
+
+    @Test
+    void projectVersionAndKnowledgeHitsKeepVersionInDeepLinks() {
+        SearchHitRow version = row(23L, 10L, null, "项目版本", null, "V2");
+        version.setProjectVersionId(23L);
+        when(searchMapper.searchProjectVersions(anyLong(), anyString(), anyInt()))
+                .thenReturn(List.of(version));
+        SearchHitRow knowledge = row(24L, 10L, null, "docs/秒杀.md", "秒杀版本内容", null);
+        knowledge.setProjectVersionId(23L);
+        when(searchMapper.searchKnowledge(anyLong(), anyString(), anyInt()))
+                .thenReturn(List.of(knowledge));
+
+        SearchResponse response = service.search(1L, "秒杀");
+
+        assertEquals("/projects/10?version=23",
+                response.groups().stream()
+                        .filter(group -> group.type().equals("PROJECT"))
+                        .findFirst().orElseThrow().items().get(0).route());
+        assertEquals("/projects/10?version=23",
+                response.groups().stream()
+                        .filter(group -> group.type().equals("KNOWLEDGE"))
+                        .findFirst().orElseThrow().items().get(0).route());
+    }
+
+    @Test
+    void searchesProjectFactsWithVersionAndFactDeepLink() {
+        SearchHitRow fact = row(61L, 12L, null, "缓存策略", "秒杀项目使用缓存", "V3 · STRUCTURE");
+        fact.setProjectVersionId(120L);
+        when(searchMapper.searchProjectFacts(anyLong(), anyString(), anyInt())).thenReturn(List.of(fact));
+
+        SearchResponse response = service.search(1L, "秒杀");
+
+        SearchHit hit = response.groups().stream()
+                .filter(g -> g.type().equals("PROJECT_FACT")).findFirst().orElseThrow()
+                .items().get(0);
+        assertEquals("/projects/12?version=120&fact=61", hit.route());
+        assertTrue(hit.snippet().contains("秒杀"));
+    }
+
+    @Test
+    void searchesOnlyVisibleActiveInterviewersAndRoutesToInterviewerPage() {
+        when(searchMapper.searchInterviewers(anyLong(), anyString(), anyInt()))
+                .thenReturn(List.of(row(62L, null, null, "项目深挖面试官", "基于项目事实追问", "内置")));
+
+        SearchResponse response = service.search(1L, "项目");
+
+        SearchHit hit = response.groups().stream()
+                .filter(g -> g.type().equals("INTERVIEWER")).findFirst().orElseThrow()
+                .items().get(0);
+        assertEquals("/interviewers", hit.route());
+    }
+
+    @Test
+    void searchesStudyTasksAndAddsFocusRoute() {
+        when(searchMapper.searchStudyTasks(anyLong(), anyString(), anyInt()))
+                .thenReturn(List.of(row(63L, null, null, "复盘缓存一致性", "秒杀", "PLANNED · REPORT")));
+
+        SearchResponse response = service.search(1L, "秒杀");
+
+        SearchHit hit = response.groups().stream()
+                .filter(g -> g.type().equals("STUDY_TASK")).findFirst().orElseThrow()
+                .items().get(0);
+        assertEquals("/study-plan?focus=63", hit.route());
+        assertTrue(hit.snippet().contains("秒杀"));
+    }
+
+    @Test
+    void totalEqualsSumOfReturnedGroupTotalsIncludingExtendedDomains() {
+        when(searchMapper.searchProjectFacts(anyLong(), anyString(), anyInt()))
+                .thenReturn(List.of(row(64L, 13L, null, "事实", "关键词", null)));
+        when(searchMapper.searchInterviewers(anyLong(), anyString(), anyInt()))
+                .thenReturn(List.of(row(65L, null, null, "面试官", "关键词", null)));
+        when(searchMapper.searchStudyTasks(anyLong(), anyString(), anyInt()))
+                .thenReturn(List.of(row(66L, null, null, "复习任务", "关键词", null)));
+
+        SearchResponse response = service.search(1L, "关键词");
+
+        assertEquals(response.groups().stream().mapToInt(SearchGroup::total).sum(), response.total());
     }
 
     @Test

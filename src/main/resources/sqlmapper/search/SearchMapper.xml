@@ -42,7 +42,9 @@
                MATCH(kc.content) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE) AS relevance
         FROM knowledge_chunk kc
         JOIN project_version pv ON pv.id = kc.project_version_id
+        JOIN project p ON p.id = pv.project_id
         WHERE kc.user_id = #{userId}
+          AND p.user_id = #{userId}
           AND MATCH(kc.content) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE)
         ORDER BY relevance DESC, kc.id ASC
         LIMIT #{limit}
@@ -53,7 +55,9 @@
                kc.relative_path AS title, kc.content AS body, NULL AS sub, kc.created_at AS updatedAt
         FROM knowledge_chunk kc
         JOIN project_version pv ON pv.id = kc.project_version_id
+        JOIN project p ON p.id = pv.project_id
         WHERE kc.user_id = #{userId}
+          AND p.user_id = #{userId}
           AND kc.content LIKE CONCAT('%', #{keyword}, '%')
         ORDER BY kc.project_version_id ASC, kc.id ASC
         LIMIT #{limit}
@@ -110,6 +114,52 @@
                OR a.jd_summary LIKE CONCAT('%', #{keyword}, '%')
                OR a.note LIKE CONCAT('%', #{keyword}, '%'))
         ORDER BY a.updated_at DESC, a.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchProjectFacts" resultMap="SearchHitRowMap">
+        SELECT f.id AS id, p.id AS projectId, f.project_version_id AS projectVersionId,
+               f.title AS title, f.content AS body,
+               CONCAT('V', pv.version_number, ' · ', f.fact_type) AS sub,
+               f.updated_at AS updatedAt
+        FROM project_fact f
+        JOIN project_version pv ON pv.id = f.project_version_id
+        JOIN project p ON p.id = pv.project_id
+        WHERE f.user_id = #{userId}
+          AND p.user_id = #{userId}
+          AND f.confirmation_status &lt;&gt; 'ARCHIVED'
+          AND (f.title LIKE CONCAT('%', #{keyword}, '%')
+               OR f.content LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY f.updated_at DESC, f.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchInterviewers" resultMap="SearchHitRowMap">
+        SELECT ip.id AS id, ip.name AS title,
+               CONCAT_WS(' ', ip.description, ip.topic_mode,
+                         CAST(ip.focus_tags_json AS CHAR)) AS body,
+               CASE WHEN ip.built_in = 1 THEN '内置' ELSE '我的' END AS sub,
+               ip.updated_at AS updatedAt
+        FROM interviewer_profile ip
+        WHERE (ip.user_id IS NULL OR ip.user_id = #{userId})
+          AND ip.archived = 0
+          AND (ip.name LIKE CONCAT('%', #{keyword}, '%')
+               OR ip.description LIKE CONCAT('%', #{keyword}, '%')
+               OR ip.topic_mode LIKE CONCAT('%', #{keyword}, '%')
+               OR CAST(ip.focus_tags_json AS CHAR) LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY ip.built_in DESC, ip.updated_at DESC, ip.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchStudyTasks" resultMap="SearchHitRowMap">
+        SELECT t.id AS id, t.title AS title,
+               CONCAT(COALESCE(t.topic, ''), ' ', t.title) AS body,
+               CONCAT(t.status, ' · ', t.source_type) AS sub, t.updated_at AS updatedAt
+        FROM study_task t
+        WHERE t.user_id = #{userId}
+          AND (t.title LIKE CONCAT('%', #{keyword}, '%')
+               OR t.topic LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY t.updated_at DESC, t.id DESC
         LIMIT #{limit}
     </select>
 </mapper>

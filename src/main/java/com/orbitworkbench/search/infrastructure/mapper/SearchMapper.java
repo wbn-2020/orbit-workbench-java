@@ -41,4 +41,16 @@ public interface SearchMapper {
     List<SearchHitRow> searchJobApplications(@Param("userId") Long userId,
                                              @Param("keyword") String keyword,
                                              @Param("limit") int limit);
+
+    List<SearchHitRow> searchProjectFacts(@Param("userId") Long userId,
+                                          @Param("keyword") String keyword,
+                                          @Param("limit") int limit);
+
+    List<SearchHitRow> searchInterviewers(@Param("userId") Long userId,
+                                          @Param("keyword") String keyword,
+                                          @Param("limit") int limit);
+
+    List<SearchHitRow> searchStudyTasks(@Param("userId") Long userId,
+                                        @Param("keyword") String keyword,
+                                        @Param("limit") int limit);
 }

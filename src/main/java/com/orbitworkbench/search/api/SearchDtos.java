@@ -11,7 +11,7 @@ public final class SearchDtos {
     /**
      * 单条命中。
      *
-     * @param type    所属域（PROJECT/KNOWLEDGE/INTERVIEW/REPORT/APPLICATION）
+     * @param type    所属域（PROJECT/KNOWLEDGE/INTERVIEW/REPORT/APPLICATION/PROJECT_FACT/INTERVIEWER/STUDY_TASK）
      * @param id      命中行主键（用于前端 key）
      * @param title   展示标题
      * @param snippet 命中摘要（可能为 null，表示该域无正文可摘）
