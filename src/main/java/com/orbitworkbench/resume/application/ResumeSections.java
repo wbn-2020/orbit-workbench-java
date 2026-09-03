@@ -31,7 +31,8 @@ public final class ResumeSections {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Source(ResumeSourceType type, Long refId, String label) {
+    public record Source(ResumeSourceType type, Long refId, String label,
+                         Long projectId, Long projectVersionId) {
         public Source {
             if (type == null) {
                 type = ResumeSourceType.MANUAL;
@@ -119,17 +120,20 @@ public final class ResumeSections {
 
     private static Source toSource(SourcePayload payload) {
         if (payload == null) {
-            return new Source(ResumeSourceType.MANUAL, null, null);
+            return new Source(ResumeSourceType.MANUAL, null, null, null, null);
         }
         ResumeSourceType type = RequestEnums.parse(ResumeSourceType.class, payload.type(), "items[].source.type");
         if (type != ResumeSourceType.MANUAL && payload.refId() == null) {
             throw invalid("自动带入条目必须带来源 id：" + type.name());
         }
-        if (type == ResumeSourceType.MANUAL && payload.refId() != null) {
-            throw invalid("手工条目不得带来源 id");
+        if (type == ResumeSourceType.MANUAL
+                && (payload.refId() != null || payload.projectId() != null
+                || payload.projectVersionId() != null)) {
+            throw invalid("手工条目不得带来源定位信息");
         }
         return new Source(type, payload.refId(),
-                payload.label() == null ? null : payload.label().trim());
+                payload.label() == null ? null : payload.label().trim(),
+                payload.projectId(), payload.projectVersionId());
     }
 
     public static ApiException invalid(String message) {

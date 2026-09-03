@@ -15,7 +15,9 @@ public final class ResumeDtos {
     public record SourcePayload(
             @NotBlank @Size(max = 32) String type,
             Long refId,
-            @Size(max = 128) String label
+            @Size(max = 128) String label,
+            Long projectId,
+            Long projectVersionId
     ) {}
 
     public record ItemPayload(
@@ -61,6 +63,8 @@ public final class ResumeDtos {
             String sourceType,
             Long sourceRefId,
             String sourceLabel,
+            Long sourceProjectId,
+            Long sourceProjectVersionId,
             boolean edited
     ) {}
 

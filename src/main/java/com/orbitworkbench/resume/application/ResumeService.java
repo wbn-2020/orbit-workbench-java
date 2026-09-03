@@ -238,6 +238,7 @@ public class ResumeService {
                     if (skills.size() < MAX_BOOTSTRAP_ITEMS_PER_SECTION) {
                         skills.add(entry(ResumeSectionKey.SKILLS, fact.getTitle(), content,
                                 ResumeSourceType.PROJECT_FACT, fact.getId(),
+                                project.getId(), latest.getId(),
                                 project.getName() + " · 版本 " + latest.getVersionNumber() + " · 已确认事实"));
                     }
                 } else if ("RESPONSIBILITY".equals(fact.getFactType())
@@ -245,6 +246,7 @@ public class ResumeService {
                     if (projects.size() < MAX_BOOTSTRAP_ITEMS_PER_SECTION) {
                         projects.add(entry(ResumeSectionKey.PROJECT_EXPERIENCE, fact.getTitle(), content,
                                 ResumeSourceType.PROJECT_FACT, fact.getId(),
+                                project.getId(), latest.getId(),
                                 project.getName() + " · 版本 " + latest.getVersionNumber() + " · 已确认事实"));
                     }
                 }
@@ -294,11 +296,11 @@ public class ResumeService {
             return;
         }
         target.add(new Item(UUID.randomUUID().toString(), target.size() + 1, ResumeItemKind.FIELD,
-                label, value.trim(), new Source(type, refId, sourceLabel), false));
+                label, value.trim(), new Source(type, refId, sourceLabel, null, null), false));
     }
 
     private Item entry(ResumeSectionKey key, String label, String content, ResumeSourceType type,
-                       Long refId, String sourceLabel) {
+                       Long refId, Long projectId, Long projectVersionId, String sourceLabel) {
         String text = content.trim();
         if (text.length() > 2000) {
             text = text.substring(0, 2000);
@@ -306,7 +308,7 @@ public class ResumeService {
         return new Item(UUID.randomUUID().toString(), 1,
                 key == ResumeSectionKey.SKILLS ? ResumeItemKind.FIELD : ResumeItemKind.ENTRY,
                 label == null || label.isBlank() ? null : label.trim(), text,
-                new Source(type, refId, sourceLabel), false);
+                new Source(type, refId, sourceLabel, projectId, projectVersionId), false);
     }
 
     private List<Item> renumber(List<Item> items) {
@@ -327,13 +329,20 @@ public class ResumeService {
                 if (source == null || source.type() == ResumeSourceType.MANUAL) {
                     continue;
                 }
-                distinct.putIfAbsent(source.type() + ":" + source.refId(), Map.of(
-                        "type", source.type().name(),
-                        "refId", source.refId() == null ? -1L : source.refId(),
-                        "label", source.label() == null ? "" : source.label(),
-                        "section", section.key().name(),
-                        "itemId", item.id(),
-                        "capturedAt", capturedAt.toString()));
+                Map<String, Object> snapshot = new LinkedHashMap<>();
+                snapshot.put("type", source.type().name());
+                snapshot.put("refId", source.refId() == null ? -1L : source.refId());
+                snapshot.put("label", source.label() == null ? "" : source.label());
+                if (source.projectId() != null) {
+                    snapshot.put("projectId", source.projectId());
+                }
+                if (source.projectVersionId() != null) {
+                    snapshot.put("projectVersionId", source.projectVersionId());
+                }
+                snapshot.put("section", section.key().name());
+                snapshot.put("itemId", item.id());
+                snapshot.put("capturedAt", capturedAt.toString());
+                distinct.putIfAbsent(source.type() + ":" + source.refId(), snapshot);
             }
         }
         return List.copyOf(distinct.values());
@@ -415,6 +424,8 @@ public class ResumeService {
                         item.source() == null ? ResumeSourceType.MANUAL.name() : item.source().type().name(),
                         item.source() == null ? null : item.source().refId(),
                         item.source() == null ? null : item.source().label(),
+                        item.source() == null ? null : item.source().projectId(),
+                        item.source() == null ? null : item.source().projectVersionId(),
                         item.edited()))
                 .toList());
     }
