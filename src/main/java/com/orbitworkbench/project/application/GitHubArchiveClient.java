@@ -13,6 +13,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.function.Supplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -22,17 +24,19 @@ class GitHubArchiveClient implements GitHubRepositoryImporter.ArchiveFetcher {
     private static final long MAX_ARCHIVE_BYTES = 20L * 1024 * 1024;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
-    private final HttpClient httpClient;
+    private final Supplier<HttpClient> httpClientFactory;
+    private volatile HttpClient httpClient;
 
     GitHubArchiveClient() {
-        this(HttpClient.newBuilder()
+        this.httpClientFactory = () -> HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NEVER)
-                .build());
+                .build();
     }
 
     GitHubArchiveClient(HttpClient httpClient) {
-        this.httpClient = httpClient;
+        this.httpClient = Objects.requireNonNull(httpClient);
+        this.httpClientFactory = null;
     }
 
     @Override
@@ -89,12 +93,27 @@ class GitHubArchiveClient implements GitHubRepositoryImporter.ArchiveFetcher {
                 .header("User-Agent", "orbit-workbench-project-importer")
                 .build();
         try {
-            return httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            return client().send(request, HttpResponse.BodyHandlers.ofInputStream());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw upstream("GitHub 仓库请求已取消");
-        } catch (IOException exception) {
+        } catch (IOException | java.io.UncheckedIOException exception) {
             throw upstream("无法连接 GitHub，请检查网络后重试");
+        }
+    }
+
+    private HttpClient client() {
+        HttpClient current = httpClient;
+        if (current != null) {
+            return current;
+        }
+        synchronized (this) {
+            current = httpClient;
+            if (current == null) {
+                current = httpClientFactory.get();
+                httpClient = current;
+            }
+            return current;
         }
     }
 

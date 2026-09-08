@@ -3,6 +3,7 @@ package com.orbitworkbench.ai.infrastructure.adapter;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,11 +12,13 @@ import com.orbitworkbench.ai.application.AiProviderException;
 import com.orbitworkbench.ai.application.AiStreamEvent;
 import com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig;
 import com.orbitworkbench.shared.api.ErrorCode;
+import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
+import org.springframework.http.client.reactive.JdkClientHttpConnector;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,19 +33,37 @@ import org.springframework.web.reactive.function.client.WebClient;
 class AiAdapterHttpTransportTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final OpenAiCompatibleResponsesAdapter responsesAdapter =
-            new OpenAiCompatibleResponsesAdapter(WebClient.builder(), objectMapper);
+    private OpenAiCompatibleResponsesAdapter responsesAdapter;
     private MockWebServer server;
 
     @BeforeEach
     void startServer() throws Exception {
+        try {
+            new JdkClientHttpConnector();
+        } catch (RuntimeException exception) {
+            assumeTrue(false, "Skipped: 当前 JVM 无法建立 loopback HTTP selector: "
+                    + rootMessage(exception));
+            return;
+        }
         server = new MockWebServer();
-        server.start();
+        try {
+            server.start();
+        } catch (IOException exception) {
+            server = null;
+            assumeTrue(false, "Skipped: 当前环境无法启动本地 Mock HTTP 服务: "
+                    + rootMessage(exception));
+            return;
+        }
+        responsesAdapter = new OpenAiCompatibleResponsesAdapter(
+                WebClient.builder().clientConnector(new JdkClientHttpConnector()),
+                objectMapper);
     }
 
     @AfterEach
     void stopServer() throws Exception {
-        server.shutdown();
+        if (server != null) {
+            server.shutdown();
+        }
     }
 
     @Test
@@ -230,9 +251,21 @@ class AiAdapterHttpTransportTest {
 
     private AiInvocation invocation(String protocol, String endpointPath, boolean stream, int timeoutMs) {
         AiConnectionRuntimeConfig connection = new AiConnectionRuntimeConfig(
-                1L, 2L, "http-test", server.url("/").toString(), endpointPath, protocol,
+                1L, 2L, "http-test", localServerUrl(), endpointPath, protocol,
                 "test-model", "sk-test-secret-123", timeoutMs);
         return new AiInvocation(connection, "system prompt", "user prompt", 10L, 20L, stream, 512);
+    }
+
+    private String localServerUrl() {
+        return "http://127.0.0.1:" + server.getPort();
+    }
+
+    private static String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
     }
 
     private static String sse(String data) {
