@@ -107,19 +107,22 @@ public class InterviewReportService {
     private final AiScenarioExecutionService aiScenarioExecution;
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
+    private final InterviewReportWriteService reportWriteService;
 
     public InterviewReportService(InterviewSessionMapper sessionMapper,
                                   InterviewTurnMapper turnMapper,
                                   InterviewReportMapper reportMapper,
                                   AiScenarioExecutionService aiScenarioExecution,
                                   ObjectMapper objectMapper,
-                                  NotificationService notificationService) {
+                                  NotificationService notificationService,
+                                  InterviewReportWriteService reportWriteService) {
         this.sessionMapper = sessionMapper;
         this.turnMapper = turnMapper;
         this.reportMapper = reportMapper;
         this.aiScenarioExecution = aiScenarioExecution;
         this.objectMapper = objectMapper;
         this.notificationService = notificationService;
+        this.reportWriteService = reportWriteService;
     }
 
     public ReportStateResponse generate(Long userId, Long sessionId, Long connectionId) {
@@ -128,32 +131,23 @@ public class InterviewReportService {
 
         String userPrompt = buildUserPrompt(session, turnMapper.listBySession(session.getId()));
 
-        String modelOutput;
+        ScoredReport scored;
         try {
             // 报告沿用会话上的联网意愿：一场面试的出题与评分必须处在同样的信息条件下，
             // 否则「按最新资料出的题」会配一份「只按站内资料评的分」。生效结论记在调用审计里。
-            modelOutput = aiScenarioExecution.executeText(AiScenario.INTERVIEW_REPORT, userId,
+            String modelOutput = aiScenarioExecution.executeText(AiScenario.INTERVIEW_REPORT, userId,
                     connectionId, SYSTEM_PROMPT, userPrompt, MAX_OUTPUT_TOKENS, MODEL_TIMEOUT,
                     WebSearchMode.parse(session.getWebSearchPolicy()));
-            persistScoredReport(session, parseScoredReport(modelOutput));
+            scored = parseScoredReport(modelOutput);
         } catch (RequestRejectedException exception) {
             // 请求根本没发出去：报告状态不动、也不发通知，只把这个 4xx 原样回给调用方。
             // 记成「报告生成失败」会谎报后果——用户以为内容丢了，其实一步都没走。
             throw exception;
         } catch (ApiException exception) {
-            reportMapper.markFailed(session.getId(),
-                    AiErrorSanitizer.sanitize(exception.getMessage(), null), Instant.now());
-            notificationService.notify(
-                    NotificationEvent.INTERVIEW_REPORT_FAILED,
-                    session.getUserId(),
-                    "面试报告生成失败",
-                    "报告生成未完成，可稍后在报告页重试。",
-                    NotificationService.RESOURCE_INTERVIEW_SESSION,
-                    session.getId(),
-                    "/interviews/" + session.getId(),
-                    "INTERVIEW_REPORT_FAILED:" + session.getId());
+            markFailedAndNotify(session, exception);
             throw exception;
         }
+        persistScoredReport(session, scored);
         return new ReportStateResponse(true,
                 ReportResponse.from(reportMapper.findBySessionId(session.getId())));
     }
@@ -164,8 +158,10 @@ public class InterviewReportService {
         if (report == null) {
             throw new ApiException(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND, "报告不存在");
         }
-        if (report.getStatus() == ReportStatus.REPORT_FAILED
-                && reportMapper.markPending(session.getId(), Instant.now()) != 1) {
+        if (report.getStatus() != ReportStatus.REPORT_FAILED) {
+            throw conflict("报告当前不可重试，请刷新后再试");
+        }
+        if (reportMapper.markPending(session.getId(), Instant.now()) != 1) {
             throw conflict("报告状态已变化，请刷新后重试");
         }
         return generate(userId, sessionId, null);
@@ -211,17 +207,11 @@ public class InterviewReportService {
     }
 
     private void persistScoredReport(InterviewSessionRecord session, ScoredReport scored) {
-        Instant now = Instant.now();
-        int updated = reportMapper.markReady(session.getId(), scored.totalScore(),
-                toJson(scored.dimensionScores()), scored.hiringRecommendation(), SCORING_RULE_VERSION,
+        reportWriteService.persistReadyAndComplete(session, new InterviewReportWriteService.ReadyPayload(
+                scored.totalScore(), toJson(scored.dimensionScores()), scored.hiringRecommendation(),
                 toJson(scored.strengths()), toJson(scored.weaknesses()), toJson(scored.followUpFindings()),
-                toJson(scored.projectMastery()), toJson(scored.knowledgeGaps()), toJson(scored.studySuggestions()),
-                now, now);
-        if (updated != 1) {
-            throw conflict("报告状态已变化，请刷新后重试");
-        }
-        sessionMapper.updateStatus(session.getId(), InterviewSessionStatus.COMPLETING,
-                InterviewSessionStatus.COMPLETED, null, null, now);
+                toJson(scored.projectMastery()), toJson(scored.knowledgeGaps()),
+                toJson(scored.studySuggestions())));
         notificationService.notify(
                 NotificationEvent.INTERVIEW_REPORT_READY,
                 session.getUserId(),
@@ -232,6 +222,22 @@ public class InterviewReportService {
                 session.getId(),
                 "/interviews/" + session.getId() + "/report",
                 "INTERVIEW_REPORT_READY:" + session.getId());
+    }
+
+    private void markFailedAndNotify(InterviewSessionRecord session, ApiException exception) {
+        if (reportMapper.markFailed(session.getId(),
+                AiErrorSanitizer.sanitize(exception.getMessage(), null), Instant.now()) != 1) {
+            throw conflict("报告状态已变化，请刷新后重试");
+        }
+        notificationService.notify(
+                NotificationEvent.INTERVIEW_REPORT_FAILED,
+                session.getUserId(),
+                "面试报告生成失败",
+                "报告生成未完成，可稍后在报告页重试。",
+                NotificationService.RESOURCE_INTERVIEW_SESSION,
+                session.getId(),
+                "/interviews/" + session.getId(),
+                "INTERVIEW_REPORT_FAILED:" + session.getId());
     }
 
     ScoredReport parseScoredReport(String modelOutput) {
@@ -375,8 +381,8 @@ public class InterviewReportService {
             throw new ApiException(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND,
                     "会话尚未结束，没有可生成的报告");
         }
-        if (report.getStatus() == ReportStatus.REPORT_READY) {
-            throw conflict("报告已生成，不能重复生成");
+        if (report.getStatus() != ReportStatus.REPORT_PENDING) {
+            throw conflict("报告当前不可生成，请刷新后重试");
         }
     }
 

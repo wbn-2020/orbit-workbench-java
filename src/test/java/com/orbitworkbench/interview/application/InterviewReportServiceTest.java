@@ -7,7 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -73,12 +73,15 @@ class InterviewReportServiceTest {
     @Mock
     private NotificationService notificationService;
 
+    @Mock
+    private InterviewReportWriteService reportWriteService;
+
     private InterviewReportService service;
 
     @BeforeEach
     void setUp() {
         service = new InterviewReportService(sessionMapper, turnMapper, reportMapper,
-                aiScenarioExecution, new ObjectMapper(), notificationService);
+                aiScenarioExecution, new ObjectMapper(), notificationService, reportWriteService);
     }
 
     @Test
@@ -90,21 +93,13 @@ class InterviewReportServiceTest {
         when(reportMapper.findBySessionId(21L))
                 .thenReturn(report(ReportStatus.REPORT_PENDING))
                 .thenReturn(ready);
-        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
-                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
-        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
-                eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any())).thenReturn(1);
-
         var response = service.generate(7L, 21L, 5L);
 
         assertEquals(ReportStatus.REPORT_READY.name(), response.report().status());
         assertEquals(84, response.report().totalScore());
         verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_REPORT), eq(7L), eq(5L),
                 any(), any(), anyInt(), any(Duration.class), eq(WebSearchMode.DISABLED));
-        verify(reportMapper).markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
-                any(), any(), any(), any(), any(), any(), any(), any());
-        verify(sessionMapper).updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
-                eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any());
+        verify(reportWriteService).persistReadyAndComplete(any(InterviewSessionRecord.class), any());
         verify(notificationService).notify(
                 eq(com.orbitworkbench.notification.domain.NotificationEvent.INTERVIEW_REPORT_READY),
                 eq(7L), any(), any(),
@@ -124,8 +119,7 @@ class InterviewReportServiceTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 reason.getValue() != null && reason.getValue().contains("JSON"),
                 "失败摘要应说明 JSON 结构问题，实际：" + reason.getValue());
-        verify(reportMapper, never()).markReady(anyLong(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(reportWriteService, never()).persistReadyAndComplete(any(), any());
         verify(notificationService).notify(
                 eq(com.orbitworkbench.notification.domain.NotificationEvent.INTERVIEW_REPORT_FAILED),
                 eq(7L), any(), any(),
@@ -134,12 +128,24 @@ class InterviewReportServiceTest {
     }
 
     @Test
-    void generateRejectsWhenReportAlreadyReady() {
+    void generateRejectsWhenReportIsNotPending() {
         InterviewSessionRecord session = session(InterviewSessionStatus.COMPLETING);
         when(sessionMapper.findById(21L)).thenReturn(session);
         when(reportMapper.findBySessionId(21L)).thenReturn(report(ReportStatus.REPORT_READY));
 
         assertThrows(ApiException.class, () -> service.generate(7L, 21L, 5L));
+        verify(aiScenarioExecution, never()).executeText(any(), any(), any(), any(), any(),
+                anyInt(), any(), any());
+    }
+
+    @Test
+    void generateRejectsWhenReportFailedUntilRetryMovesItToPending() {
+        InterviewSessionRecord session = session(InterviewSessionStatus.COMPLETING);
+        when(sessionMapper.findById(21L)).thenReturn(session);
+        when(reportMapper.findBySessionId(21L)).thenReturn(report(ReportStatus.REPORT_FAILED));
+
+        assertThrows(ApiException.class, () -> service.generate(7L, 21L, 5L));
+
         verify(aiScenarioExecution, never()).executeText(any(), any(), any(), any(), any(),
                 anyInt(), any(), any());
     }
@@ -153,16 +159,10 @@ class InterviewReportServiceTest {
                 .thenReturn(report(ReportStatus.REPORT_PENDING));
         when(reportMapper.markPending(eq(21L), any())).thenReturn(1);
         stubModelOutput(VALID_JSON);
-        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
-                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
-        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
-                eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any())).thenReturn(1);
-
         service.retry(7L, 21L);
 
         verify(reportMapper).markPending(eq(21L), any());
-        verify(reportMapper).markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
-                any(), any(), any(), any(), any(), any(), any(), any());
+        verify(reportWriteService).persistReadyAndComplete(eq(session), any());
     }
 
     @Test
@@ -174,11 +174,6 @@ class InterviewReportServiceTest {
         when(reportMapper.findBySessionId(21L))
                 .thenReturn(report(ReportStatus.REPORT_PENDING))
                 .thenReturn(ready);
-        when(reportMapper.markReady(eq(21L), eq(84), any(), eq("PASS"), eq(InterviewReportService.SCORING_RULE_VERSION),
-                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
-        when(sessionMapper.updateStatus(eq(21L), eq(InterviewSessionStatus.COMPLETING),
-                eq(InterviewSessionStatus.COMPLETED), isNull(), isNull(), any())).thenReturn(1);
-
         var response = service.generate(7L, 21L, 5L);
 
         assertEquals(84, response.report().totalScore());
@@ -237,6 +232,39 @@ class InterviewReportServiceTest {
     }
 
     @Test
+    void generateDoesNotMarkFailedOrNotifyWhenReadyWriteConflicts() {
+        stubSessionAndPendingReport();
+        stubModelOutput(VALID_JSON);
+        doThrow(new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT, "会话状态已变化"))
+                .when(reportWriteService).persistReadyAndComplete(any(), any());
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.generate(7L, 21L, 5L));
+
+        assertEquals(ErrorCode.STATE_CONFLICT, exception.getErrorCode());
+        verify(reportMapper, never()).markFailed(anyLong(), any(), any());
+        verify(notificationService, never()).notify(
+                eq(com.orbitworkbench.notification.domain.NotificationEvent.INTERVIEW_REPORT_FAILED),
+                any(), any(), any(), any(), any(), any(), any());
+        verify(notificationService, never()).notify(
+                eq(com.orbitworkbench.notification.domain.NotificationEvent.INTERVIEW_REPORT_READY),
+                any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void generateDoesNotSendFailureNotificationWhenReportStateAlreadyChanged() {
+        stubSessionAndPendingReport();
+        stubModelOutput("不是 JSON");
+        when(reportMapper.markFailed(eq(21L), any(), any())).thenReturn(0);
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.generate(7L, 21L, 5L));
+
+        assertEquals(ErrorCode.STATE_CONFLICT, exception.getErrorCode());
+        verify(notificationService, never()).notify(
+                eq(com.orbitworkbench.notification.domain.NotificationEvent.INTERVIEW_REPORT_FAILED),
+                any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void readyStudySuggestionsParsesSuggestionsJson() {
         InterviewSessionRecord session = session(InterviewSessionStatus.COMPLETED);
         InterviewReportRecord report = report(ReportStatus.REPORT_READY);
@@ -253,6 +281,7 @@ class InterviewReportServiceTest {
         InterviewSessionRecord session = session(InterviewSessionStatus.COMPLETING);
         when(sessionMapper.findById(21L)).thenReturn(session);
         when(reportMapper.findBySessionId(21L)).thenReturn(report(ReportStatus.REPORT_PENDING));
+        when(reportMapper.markFailed(eq(21L), any(), any())).thenReturn(1);
         InterviewTurnRecord turn = new InterviewTurnRecord();
         turn.setTurnNo(1);
         turn.setTurnType(InterviewTurnType.MAIN);

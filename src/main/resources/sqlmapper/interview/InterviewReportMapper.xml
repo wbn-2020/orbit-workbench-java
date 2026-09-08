@@ -59,7 +59,7 @@
             failure_reason = #{failureReason},
             retry_count = retry_count + 1,
             updated_at = #{updatedAt}
-        WHERE session_id = #{sessionId} AND status IN ('REPORT_PENDING', 'REPORT_READY')
+        WHERE session_id = #{sessionId} AND status = 'REPORT_PENDING'
     </update>
 
     <update id="markPending">
@@ -86,7 +86,7 @@
             failure_reason = NULL,
             generated_at = #{generatedAt},
             updated_at = #{updatedAt}
-        WHERE session_id = #{sessionId} AND status IN ('REPORT_PENDING', 'REPORT_FAILED')
+        WHERE session_id = #{sessionId} AND status = 'REPORT_PENDING'
     </update>
 
     <resultMap id="ReportCenterRowMap" type="com.orbitworkbench.interview.domain.ReportCenterRow">
