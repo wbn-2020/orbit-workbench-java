@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.worklog.infrastructure.mapper.WorkLogMapper">
+    <resultMap id="WorkLogRowMap" type="com.orbitworkbench.worklog.domain.WorkLogRow">
+        <id property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="category" column="category"/>
+        <result property="distilled" column="distilled"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, title, content, category, distilled, version, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.worklog.domain.WorkLogRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO work_log(
+            user_id, title, content, category, distilled, version, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{title}, #{content}, #{category}, #{distilled}, #{version}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="findOwned" resultMap="WorkLogRowMap">
+        SELECT id, title, content, category, distilled, created_at
+        FROM work_log
+        WHERE user_id = #{userId} AND id = #{id}
+    </select>
+
+    <select id="listByUser" resultMap="WorkLogRowMap">
+        SELECT id, title, content, category, distilled, created_at
+        FROM work_log
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <update id="markDistilled">
+        UPDATE work_log
+        SET distilled = 1, updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND distilled = 0
+    </update>
+</mapper>

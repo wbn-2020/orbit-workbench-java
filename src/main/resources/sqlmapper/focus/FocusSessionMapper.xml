@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.focus.infrastructure.mapper.FocusSessionMapper">
+    <resultMap id="FocusSessionRowMap" type="com.orbitworkbench.focus.domain.FocusSessionRow">
+        <id property="id" column="id"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="durationMinutes" column="duration_minutes"/>
+        <result property="mode" column="mode"/>
+        <result property="label" column="label"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <resultMap id="FocusDayStatMap" type="com.orbitworkbench.focus.domain.FocusDayStat">
+        <result property="date" column="stat_date"/>
+        <result property="focusMinutes" column="focus_minutes"/>
+        <result property="sessions" column="sessions"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.orbitworkbench.focus.domain.FocusSessionRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO focus_session(
+            user_id, started_at, duration_minutes, mode, label, idempotency_key, version, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{startedAt}, #{durationMinutes}, #{mode}, #{label}, #{idempotencyKey}, #{version}, #{createdAt}, #{updatedAt}
+        )
+        ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)
+    </insert>
+
+    <select id="findOwned" resultMap="FocusSessionRowMap">
+        SELECT id, started_at, duration_minutes, mode, label, created_at
+        FROM focus_session
+        WHERE user_id = #{userId} AND id = #{id}
+    </select>
+
+    <select id="findByIdempotencyKey" resultMap="FocusSessionRowMap">
+        SELECT id, started_at, duration_minutes, mode, label, created_at
+        FROM focus_session
+        WHERE user_id = #{userId} AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <select id="listByUser" resultMap="FocusSessionRowMap">
+        SELECT id, started_at, duration_minutes, mode, label, created_at
+        FROM focus_session
+        WHERE user_id = #{userId}
+        ORDER BY started_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="listFocusSince" resultMap="FocusSessionRowMap">
+        SELECT id, started_at, duration_minutes, mode, label, created_at
+        FROM focus_session
+        WHERE user_id = #{userId} AND mode = 'FOCUS' AND started_at &gt;= #{since}
+        ORDER BY started_at
+    </select>
+</mapper>

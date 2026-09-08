@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.worklog.infrastructure.mapper.KnowledgeCardMapper">
+    <resultMap id="KnowledgeCardRowMap" type="com.orbitworkbench.worklog.domain.KnowledgeCardRow">
+        <id property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="summary" column="summary"/>
+        <result property="sourceLogId" column="source_log_id"/>
+        <result property="tagsJson" column="tags_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.orbitworkbench.worklog.domain.KnowledgeCardRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO knowledge_card(
+            user_id, title, summary, source_log_id, tags_json, version, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{title}, #{summary}, #{sourceLogId}, #{tagsJson}, #{version}, #{createdAt}, #{updatedAt}
+        )
+        ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)
+    </insert>
+
+    <select id="findBySourceLog" resultMap="KnowledgeCardRowMap">
+        SELECT id, title, summary, source_log_id, tags_json, created_at
+        FROM knowledge_card
+        WHERE user_id = #{userId} AND source_log_id = #{sourceLogId}
+    </select>
+
+    <select id="findOwned" resultMap="KnowledgeCardRowMap">
+        SELECT id, title, summary, source_log_id, tags_json, created_at
+        FROM knowledge_card
+        WHERE user_id = #{userId} AND id = #{id}
+    </select>
+
+    <select id="listByUser" resultMap="KnowledgeCardRowMap">
+        SELECT id, title, summary, source_log_id, tags_json, created_at
+        FROM knowledge_card
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <update id="updateContent">
+        UPDATE knowledge_card
+        SET title = #{title}, summary = #{summary}, tags_json = #{tagsJson},
+            version = version + 1, updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+</mapper>

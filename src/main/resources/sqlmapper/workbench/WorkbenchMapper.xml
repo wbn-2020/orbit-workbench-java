@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.workbench.infrastructure.mapper.WorkbenchMapper">
+    <resultMap id="EvalMap" type="com.orbitworkbench.workbench.domain.WorkbenchLastEvaluation">
+        <result property="hiringRecommendation" column="hiring_recommendation"/>
+        <result property="totalScore" column="total_score"/>
+    </resultMap>
+
+    <select id="countWorkLogs" resultType="long">
+        SELECT COUNT(*) FROM work_log WHERE user_id = #{userId}
+    </select>
+
+    <select id="countPendingDistill" resultType="long">
+        SELECT COUNT(*) FROM work_log WHERE user_id = #{userId} AND distilled = 0
+    </select>
+
+    <select id="countKnowledgeCards" resultType="long">
+        SELECT COUNT(*) FROM knowledge_card WHERE user_id = #{userId}
+    </select>
+
+    <select id="countLearningGoals" resultType="long">
+        SELECT COUNT(*) FROM learning_goal WHERE user_id = #{userId}
+    </select>
+
+    <select id="countActiveGoals" resultType="long">
+        SELECT COUNT(*) FROM learning_goal WHERE user_id = #{userId} AND status = 'ACTIVE'
+    </select>
+
+    <select id="sumFocusMinutesAll" resultType="long">
+        SELECT COALESCE(SUM(duration_minutes), 0)
+        FROM focus_session
+        WHERE user_id = #{userId} AND mode = 'FOCUS'
+    </select>
+
+    <select id="focusMinutesToday" resultType="long">
+        SELECT COALESCE(SUM(duration_minutes), 0)
+        FROM focus_session
+        WHERE user_id = #{userId} AND mode = 'FOCUS'
+          AND started_at &gt;= #{start} AND started_at &lt; #{end}
+    </select>
+
+    <!-- 以报告插入序（id）而非 generated_at 取「最近一次评估」：重试会改写 generated_at，
+         但用户关心的是最新一场面试的结论，插入序才是场次顺序。 -->
+    <select id="lastInterviewGrade" resultMap="EvalMap">
+        SELECT r.hiring_recommendation, r.total_score
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+        ORDER BY r.id DESC
+        LIMIT 1
+    </select>
+</mapper>

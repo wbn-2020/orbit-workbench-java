@@ -1,0 +1,147 @@
+package com.orbitworkbench.learning.application;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.orbitworkbench.learning.api.LearningGoalDtos.CreateLearningGoalRequest;
+import com.orbitworkbench.learning.api.LearningGoalDtos.UpdateLearningGoalRequest;
+import com.orbitworkbench.learning.domain.LearningGoalRow;
+import com.orbitworkbench.learning.domain.LearningGoalStatus;
+import com.orbitworkbench.learning.infrastructure.mapper.LearningGoalMapper;
+import com.orbitworkbench.shared.api.ApiException;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class LearningGoalServiceTest {
+
+    @Mock
+    private LearningGoalMapper mapper;
+
+    private LearningGoalRow row(long id, String title, String reason, String linkedSkill) {
+        LearningGoalRow row = new LearningGoalRow();
+        row.setId(id);
+        row.setTitle(title);
+        row.setReason(reason);
+        row.setStatus(LearningGoalStatus.ACTIVE);
+        row.setProgress(0);
+        row.setLinkedSkill(linkedSkill);
+        return row;
+    }
+
+    @Test
+    void createRejectsBlankTitle() {
+        LearningGoalService service = new LearningGoalService(mapper);
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.create(1L,
+                new CreateLearningGoalRequest("  ", null, null), null));
+
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, exception.getStatus());
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
+    void createNormalizesTitleAndTrimsOptionals() {
+        when(mapper.findOwned(eq(1L), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(row(5L, "掌握 RAG", null, null));
+        LearningGoalService service = new LearningGoalService(mapper);
+
+        service.create(1L, new CreateLearningGoalRequest("  掌握 RAG  ", "  学了用于知识库  ", "  检索  "), null);
+
+        ArgumentCaptor<com.orbitworkbench.learning.domain.LearningGoalRecord> captor =
+                ArgumentCaptor.forClass(com.orbitworkbench.learning.domain.LearningGoalRecord.class);
+        verify(mapper).insert(captor.capture());
+        Assertions.assertEquals("掌握 RAG", captor.getValue().getTitle());
+        Assertions.assertEquals("学了用于知识库", captor.getValue().getReason());
+        Assertions.assertEquals("检索", captor.getValue().getLinkedSkill());
+        Assertions.assertEquals(LearningGoalStatus.ACTIVE, captor.getValue().getStatus());
+        Assertions.assertEquals(0, captor.getValue().getProgress());
+    }
+
+    @Test
+    void createReplaysSameContentOnIdempotencyKeyHit() {
+        LearningGoalRow existing = row(9L, "掌握 RAG", null, null);
+        when(mapper.findByIdempotencyKey(1L, "key-1")).thenReturn(existing);
+        LearningGoalService service = new LearningGoalService(mapper);
+
+        var response = service.create(1L,
+                new CreateLearningGoalRequest("掌握 RAG", null, null), "key-1");
+
+        assertEquals("9", response.id());
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
+    void createConflictsWhenIdempotencyKeyReusedWithDifferentContent() {
+        when(mapper.findByIdempotencyKey(1L, "key-1")).thenReturn(row(9L, "掌握 RAG", null, null));
+        LearningGoalService service = new LearningGoalService(mapper);
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.create(1L,
+                new CreateLearningGoalRequest("学习向量检索", null, null), "key-1"));
+
+        assertEquals(org.springframework.http.HttpStatus.CONFLICT, exception.getStatus());
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
+    void updateRejectsProgressOutsideBounds() {
+        when(mapper.findOwned(1L, 3L)).thenReturn(row(3L, "目标", null, null));
+        LearningGoalService service = new LearningGoalService(mapper);
+
+        assertThrows(ApiException.class, () -> service.update(1L, 3L,
+                new UpdateLearningGoalRequest("ACTIVE", 101)));
+        assertThrows(ApiException.class, () -> service.update(1L, 3L,
+                new UpdateLearningGoalRequest("ACTIVE", -1)));
+        verify(mapper, never()).updateStatusAndProgress(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt(), any());
+    }
+
+    @Test
+    void updateRejectsInvalidStatus() {
+        when(mapper.findOwned(1L, 3L)).thenReturn(row(3L, "目标", null, null));
+        LearningGoalService service = new LearningGoalService(mapper);
+
+        assertThrows(ApiException.class, () -> service.update(1L, 3L,
+                new UpdateLearningGoalRequest("FINISHED", 10)));
+        verify(mapper, never()).updateStatusAndProgress(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt(), any());
+    }
+
+    @Test
+    void updateWritesStatusAndProgressForOwnedGoal() {
+        LearningGoalRow before = row(3L, "目标", null, null);
+        LearningGoalRow after = row(3L, "目标", null, null);
+        after.setStatus(LearningGoalStatus.DONE);
+        after.setProgress(100);
+        when(mapper.findOwned(1L, 3L)).thenReturn(before, after);
+        when(mapper.updateStatusAndProgress(eq(3L), eq(1L), eq("DONE"), eq(100), any()))
+                .thenReturn(1);
+        LearningGoalService service = new LearningGoalService(mapper);
+
+        var response = service.update(1L, 3L, new UpdateLearningGoalRequest("done", 100));
+
+        assertSame(LearningGoalStatus.DONE, response.status());
+        assertEquals(100, response.progress());
+        verify(mapper).updateStatusAndProgress(eq(3L), eq(1L), eq("DONE"), eq(100), any());
+    }
+
+    @Test
+    void updateReturns404ForForeignGoal() {
+        when(mapper.findOwned(1L, 3L)).thenReturn(null);
+        LearningGoalService service = new LearningGoalService(mapper);
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.update(1L, 3L,
+                new UpdateLearningGoalRequest("ACTIVE", 10)));
+
+        assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, exception.getStatus());
+        verify(mapper, never()).updateStatusAndProgress(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt(), any());
+    }
+}

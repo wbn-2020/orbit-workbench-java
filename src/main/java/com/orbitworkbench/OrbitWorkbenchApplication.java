@@ -30,7 +30,11 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         "com.orbitworkbench.schedule.infrastructure.mapper",
         "com.orbitworkbench.search.infrastructure.mapper",
         "com.orbitworkbench.studyplan.infrastructure.mapper",
-        "com.orbitworkbench.workspace.infrastructure.mapper"
+        "com.orbitworkbench.workspace.infrastructure.mapper",
+        "com.orbitworkbench.worklog.infrastructure.mapper",
+        "com.orbitworkbench.learning.infrastructure.mapper",
+        "com.orbitworkbench.focus.infrastructure.mapper",
+        "com.orbitworkbench.workbench.infrastructure.mapper"
 })
 @EnableConfigurationProperties({
         CryptoProperties.class,
