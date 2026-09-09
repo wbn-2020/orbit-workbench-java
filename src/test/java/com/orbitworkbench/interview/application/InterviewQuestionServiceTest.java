@@ -111,6 +111,48 @@ class InterviewQuestionServiceTest {
     }
 
     @Test
+    void promptCarriesKnowledgeCardsWhenSnapshotPresent() {
+        InterviewSessionRecord session = runningSession();
+        session.setKnowledgeBindingsJson(
+                "[{\"cardId\":77,\"title\":\"库存分桶方案\",\"summary\":\"库存扣减按桶拆分避免热点\","
+                        + "\"tags\":\"[\\\"库存\\\"]\",\"distilledAt\":\"2026-09-08T00:00:00Z\"}]");
+        when(sessionMapper.findById(21L)).thenReturn(session);
+        when(turnMapper.countBySession(21L)).thenReturn(0);
+        when(turnMapper.listBySession(21L)).thenReturn(List.of());
+        stubExecution("你实践过的库存分桶是怎么设计的？");
+        stubInsertId(102L);
+        when(turnMapper.findById(102L)).thenReturn(savedTurn(102L, InterviewTurnType.MAIN,
+                "你实践过的库存分桶是怎么设计的？"));
+
+        service.next(7L, 21L, new NextQuestionRequest("MAIN", null));
+
+        ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
+        verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_QUESTION), eq(7L), eq(5L),
+                any(), user.capture(), anyInt(), any(Duration.class));
+        assertEquals(true, user.getValue().contains("个人经验（知识卡片）"));
+        assertEquals(true, user.getValue().contains("库存分桶方案：库存扣减按桶拆分避免热点"));
+    }
+
+    @Test
+    void promptOmitsKnowledgeSectionWhenSnapshotAbsent() {
+        InterviewSessionRecord session = runningSession();
+        when(sessionMapper.findById(21L)).thenReturn(session);
+        when(turnMapper.countBySession(21L)).thenReturn(0);
+        when(turnMapper.listBySession(21L)).thenReturn(List.of());
+        stubExecution("请介绍 HashMap？");
+        stubInsertId(103L);
+        when(turnMapper.findById(103L)).thenReturn(savedTurn(103L, InterviewTurnType.MAIN,
+                "请介绍 HashMap？"));
+
+        service.next(7L, 21L, new NextQuestionRequest("MAIN", null));
+
+        ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
+        verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_QUESTION), eq(7L), eq(5L),
+                any(), user.capture(), anyInt(), any(Duration.class));
+        assertEquals(false, user.getValue().contains("个人经验（知识卡片）"));
+    }
+
+    @Test
     void nextGeneratesMainQuestionAndPersistsTurn() {
         InterviewSessionRecord session = runningSession();
         when(sessionMapper.findById(21L)).thenReturn(session);

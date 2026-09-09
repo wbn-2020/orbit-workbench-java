@@ -1,5 +1,6 @@
 package com.orbitworkbench.interview.api;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.orbitworkbench.interview.domain.InterviewReportRecord;
 import com.orbitworkbench.interview.domain.InterviewSessionRecord;
 import com.orbitworkbench.interview.domain.InterviewTurnRecord;
@@ -39,7 +40,8 @@ public final class InterviewDtos {
             Instant scheduledAt,
             Long aiConnectionId,
             @Pattern(regexp = "DISABLED|ON_DEMAND|AUTO") String webSearchPolicy,
-            @Size(max = 5) List<@Valid ProjectBindingRequest> projectBindings
+            @Size(max = 5) List<@Valid ProjectBindingRequest> projectBindings,
+            @Size(max = 10) List<@NotNull Long> knowledgeCardIds
     ) {}
 
     public record NextQuestionRequest(
@@ -93,6 +95,7 @@ public final class InterviewDtos {
             Integer durationLimitMinutes,
             Instant scheduledAt,
             List<ProjectBindingSnapshotResponse> projectBindings,
+            Integer knowledgeBindingCount,
             String status,
             Instant startedAt,
             Instant endedAt,
@@ -120,11 +123,25 @@ public final class InterviewDtos {
                     record.getDurationLimitMinutes(),
                     record.getScheduledAt(),
                     parseBindings(record.getProjectBindingsJson()),
+                    knowledgeBindingCount(record.getKnowledgeBindingsJson()),
                     record.getStatus() == null ? null : record.getStatus().name(),
                     record.getStartedAt(),
                     record.getEndedAt(),
                     record.getCreatedAt(),
                     record.getUpdatedAt());
+        }
+
+        /** 知识卡片快照条数：解析失败或空都按 0，不假装有注入。 */
+        private static Integer knowledgeBindingCount(String json) {
+            if (json == null || json.isBlank()) {
+                return 0;
+            }
+            try {
+                JsonNode nodes = SNAPSHOT_MAPPER.readTree(json);
+                return nodes.isArray() ? nodes.size() : 0;
+            } catch (Exception ignored) {
+                return 0;
+            }
         }
 
         /** 请求档位、当次用的形状、实际是否联网与原因一起回给界面，前端不再自己拼。 */

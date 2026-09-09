@@ -257,6 +257,10 @@ public class InterviewQuestionService {
         if (!projectContext.isEmpty()) {
             user.append(projectContext).append('\n');
         }
+        String knowledgeContext = knowledgeBindingsContext(session.getKnowledgeBindingsJson());
+        if (!knowledgeContext.isEmpty()) {
+            user.append(knowledgeContext).append('\n');
+        }
         user.append("已进行的问答（可为空）：\n");
         for (InterviewTurnRecord turn : turns) {
             user.append("[").append(turn.getTurnType()).append("] 问：")
@@ -307,6 +311,38 @@ public class InterviewQuestionService {
                 }
             }
             return persona.toString();
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    /**
+     * 从知识卡片快照提取工作心得，作为可追问的真实经验依据（23 号设计 A 案）。
+     * 与项目事实分段呈现，各说各话；无快照或解析失败为空，不让脏数据进 prompt。
+     */
+    private String knowledgeBindingsContext(String bindingsJson) {
+        if (bindingsJson == null || bindingsJson.isBlank()) {
+            return "";
+        }
+        try {
+            JsonNode cards = objectMapper.readTree(bindingsJson);
+            if (!cards.isArray() || cards.isEmpty()) {
+                return "";
+            }
+            StringBuilder context = new StringBuilder(
+                    "以下是候选人从工作记录中蒸馏出的个人经验（知识卡片），可以直接围绕这些真实经历追问实现细节与权衡，"
+                            + "不要向候选人复述原文：\n");
+            int count = 0;
+            for (JsonNode card : cards) {
+                if (count >= 5) {
+                    break;
+                }
+                count++;
+                context.append("- ").append(textOr(card.get("title"), "经验"))
+                        .append("：").append(limit(textOr(card.get("summary"), ""), 300))
+                        .append('\n');
+            }
+            return context.toString();
         } catch (Exception ignored) {
             return "";
         }

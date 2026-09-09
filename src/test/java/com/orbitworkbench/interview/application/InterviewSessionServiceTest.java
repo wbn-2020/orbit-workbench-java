@@ -60,13 +60,17 @@ class InterviewSessionServiceTest {
     @Mock
     private com.orbitworkbench.interviewer.application.InterviewerService interviewerService;
 
+    @Mock
+    private com.orbitworkbench.worklog.infrastructure.mapper.KnowledgeCardMapper knowledgeCardMapper;
+
     private InterviewSessionService service;
 
     @BeforeEach
     void setUp() {
         service = new InterviewSessionService(sessionMapper, turnMapper, reportMapper,
                 aiConnectionService, projectMapper, projectFactMapper, interviewerService,
-                new com.fasterxml.jackson.databind.ObjectMapper());
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                knowledgeCardMapper);
         org.mockito.Mockito.when(aiConnectionService.getRuntimeConfig(5L)).thenReturn(
                 new com.orbitworkbench.aiconnection.application.AiConnectionService.AiConnectionRuntimeConfig(
                         5L, 9L, "主账户", "https://gw.example/v1", "/chat/completions",
@@ -87,6 +91,60 @@ class InterviewSessionServiceTest {
         assertEquals(InterviewSessionStatus.READY, captor.getValue().getStatus());
         assertEquals(4, captor.getValue().getQuestionLimit());
         assertEquals(12, captor.getValue().getTurnLimit());
+    }
+
+    @Test
+    void createDefaultsToLatestFiveKnowledgeCardsWhenIdsOmitted() {
+        doInsertAssignsId();
+        com.orbitworkbench.worklog.domain.KnowledgeCardRow row =
+                new com.orbitworkbench.worklog.domain.KnowledgeCardRow();
+        row.setId(77L);
+        row.setTitle("库存分桶方案");
+        row.setSummary("库存扣减按桶拆分，避免单行热点");
+        row.setTagsJson("[\"库存\"]");
+        row.setCreatedAt(java.time.Instant.parse("2026-09-08T00:00:00Z"));
+        org.mockito.Mockito.when(knowledgeCardMapper.listByUser(7L, 5, 0))
+                .thenReturn(java.util.List.of(row));
+
+        service.create(7L, request());
+
+        ArgumentCaptor<InterviewSessionRecord> captor =
+                ArgumentCaptor.forClass(InterviewSessionRecord.class);
+        verify(sessionMapper).insert(captor.capture());
+        String snapshot = captor.getValue().getKnowledgeBindingsJson();
+        org.junit.jupiter.api.Assertions.assertTrue(snapshot.contains("库存分桶方案"));
+        org.junit.jupiter.api.Assertions.assertTrue(snapshot.contains("cardId"));
+    }
+
+    @Test
+    void createRejectsForeignKnowledgeCardWith404() {
+        doInsertAssignsId();
+        org.mockito.Mockito.when(knowledgeCardMapper.findOwned(7L, 999L)).thenReturn(null);
+        CreateSessionRequest request = new CreateSessionRequest(
+                "字节跳动 · 技术面", "PROJECT_DEEP_DIVE", "TRAINING", "FIRST",
+                null, "项目深挖面试官", "Java 后端工程师", "THREE_TO_FIVE_YEARS",
+                4, 3, 12, 45, null, 5L, "DISABLED", null,
+                java.util.List.of(999L));
+
+        ApiException exception = org.junit.jupiter.api.Assertions.assertThrows(
+                ApiException.class, () -> service.create(7L, request));
+
+        assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, exception.getStatus());
+        verify(sessionMapper, org.mockito.Mockito.never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void createWritesEmptySnapshotWhenNoCardsAndNoIds() {
+        doInsertAssignsId();
+        org.mockito.Mockito.when(knowledgeCardMapper.listByUser(7L, 5, 0))
+                .thenReturn(java.util.List.of());
+
+        service.create(7L, request());
+
+        ArgumentCaptor<InterviewSessionRecord> captor =
+                ArgumentCaptor.forClass(InterviewSessionRecord.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertEquals("[]", captor.getValue().getKnowledgeBindingsJson());
     }
 
     @Test
@@ -268,7 +326,8 @@ class InterviewSessionServiceTest {
                 null,
                 5L,
                 "DISABLED",
-                bindings);
+                bindings,
+                null);
     }
 
     @Test

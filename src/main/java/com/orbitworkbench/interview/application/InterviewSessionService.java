@@ -32,6 +32,8 @@ import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.RequestEnums;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -72,7 +74,8 @@ public class InterviewSessionService {
                                    ProjectMapper projectMapper,
                                    ProjectFactMapper projectFactMapper,
                                    InterviewerService interviewerService,
-                                   ObjectMapper objectMapper) {
+                                   ObjectMapper objectMapper,
+                                   com.orbitworkbench.worklog.infrastructure.mapper.KnowledgeCardMapper knowledgeCardMapper) {
         this.sessionMapper = sessionMapper;
         this.turnMapper = turnMapper;
         this.reportMapper = reportMapper;
@@ -81,7 +84,10 @@ public class InterviewSessionService {
         this.projectFactMapper = projectFactMapper;
         this.interviewerService = interviewerService;
         this.objectMapper = objectMapper;
+        this.knowledgeCardMapper = knowledgeCardMapper;
     }
+
+    private final com.orbitworkbench.worklog.infrastructure.mapper.KnowledgeCardMapper knowledgeCardMapper;
 
     @Transactional
     public SessionResponse create(Long userId, CreateSessionRequest request) {
@@ -93,6 +99,8 @@ public class InterviewSessionService {
         record.setForm(request.form());
         record.setRound(request.round());
         record.setProjectBindingsJson(buildProjectBindingsSnapshot(userId, request.projectBindings()));
+        record.setKnowledgeBindingsJson(
+                buildKnowledgeBindingsSnapshot(userId, request.knowledgeCardIds()));
         record.setWebSearchPolicy(request.webSearchPolicy());
         if (request.aiConnectionId() != null) {
             AiConnectionRuntimeConfig connection =
@@ -261,6 +269,50 @@ public class InterviewSessionService {
             return objectMapper.writeValueAsString(snapshot);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("面试官快照序列化失败", exception);
+        }
+    }
+
+    /**
+     * 知识卡片快照（23 号设计 A 案）：显式传入 id 时逐条校验归属（跨用户/不存在 404）；
+     * 不传时默认注入最近蒸馏的 5 条，规则透明。快照含 id/标题/摘要/标签/蒸馏时间全文，
+     * 仅随会话创建写入，之后只读。
+     */
+    private String buildKnowledgeBindingsSnapshot(Long userId, List<Long> knowledgeCardIds) {
+        List<com.orbitworkbench.worklog.domain.KnowledgeCardRow> cards;
+        if (knowledgeCardIds == null || knowledgeCardIds.isEmpty()) {
+            cards = knowledgeCardMapper.listByUser(userId, 5, 0);
+        } else {
+            Set<Long> seen = new HashSet<>();
+            cards = new ArrayList<>();
+            for (Long id : knowledgeCardIds) {
+                if (!seen.add(id)) {
+                    continue;
+                }
+                com.orbitworkbench.worklog.domain.KnowledgeCardRow row =
+                        knowledgeCardMapper.findOwned(userId, id);
+                if (row == null) {
+                    throw new ApiException(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND,
+                            "知识卡片不存在或不可访问：" + id);
+                }
+                cards.add(row);
+            }
+        }
+        if (cards.isEmpty()) {
+            return "[]";
+        }
+        try {
+            ArrayNode array = objectMapper.createArrayNode();
+            for (com.orbitworkbench.worklog.domain.KnowledgeCardRow card : cards) {
+                ObjectNode node = array.addObject();
+                node.put("cardId", card.getId());
+                node.put("title", card.getTitle());
+                node.put("summary", card.getSummary());
+                node.put("tags", card.getTagsJson() == null ? "" : card.getTagsJson());
+                node.put("distilledAt", card.getCreatedAt() == null ? null : card.getCreatedAt().toString());
+            }
+            return objectMapper.writeValueAsString(array);
+        } catch (Exception exception) {
+            throw new IllegalStateException("知识卡片快照序列化失败", exception);
         }
     }
 

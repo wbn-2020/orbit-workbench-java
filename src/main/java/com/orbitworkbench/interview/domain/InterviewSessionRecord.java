@@ -14,6 +14,7 @@ public class InterviewSessionRecord {
     private String interviewerNameSnapshot;
     private String interviewerSnapshotJson;
     private String projectBindingsJson;
+    private String knowledgeBindingsJson;
     private Long aiConnectionIdSnapshot;
     private String aiModelSnapshot;
     private String webSearchPolicy;
@@ -54,6 +55,10 @@ public class InterviewSessionRecord {
     public String getInterviewerSnapshotJson() { return interviewerSnapshotJson; }
     public void setInterviewerSnapshotJson(String interviewerSnapshotJson) {
         this.interviewerSnapshotJson = interviewerSnapshotJson;
+    }
+    public String getKnowledgeBindingsJson() { return knowledgeBindingsJson; }
+    public void setKnowledgeBindingsJson(String knowledgeBindingsJson) {
+        this.knowledgeBindingsJson = knowledgeBindingsJson;
     }
     public String getProjectBindingsJson() { return projectBindingsJson; }
     public void setProjectBindingsJson(String projectBindingsJson) {

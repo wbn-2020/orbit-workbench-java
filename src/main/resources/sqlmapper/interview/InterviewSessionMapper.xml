@@ -13,6 +13,7 @@
         <result property="interviewerNameSnapshot" column="interviewer_name_snapshot"/>
         <result property="interviewerSnapshotJson" column="interviewer_snapshot_json"/>
         <result property="projectBindingsJson" column="project_bindings_json"/>
+        <result property="knowledgeBindingsJson" column="knowledge_bindings_json"/>
         <result property="aiConnectionIdSnapshot" column="ai_connection_id_snapshot"/>
         <result property="aiModelSnapshot" column="ai_model_snapshot"/>
         <result property="webSearchPolicy" column="web_search_policy"/>
@@ -49,7 +50,7 @@
         INSERT INTO interview_session(
             user_id, title, topic_mode, form, round,
             interviewer_id, interviewer_name_snapshot, interviewer_snapshot_json,
-            project_bindings_json,
+            project_bindings_json, knowledge_bindings_json,
             ai_connection_id_snapshot, ai_model_snapshot, web_search_policy,
             target_role, target_experience_band,
             question_limit, follow_up_limit, turn_limit, duration_limit_minutes,
@@ -59,7 +60,7 @@
         VALUES(
             #{userId}, #{title}, #{topicMode}, #{form}, #{round},
             #{interviewerId}, #{interviewerNameSnapshot}, #{interviewerSnapshotJson},
-            #{projectBindingsJson},
+            #{projectBindingsJson}, #{knowledgeBindingsJson},
             #{aiConnectionIdSnapshot}, #{aiModelSnapshot}, #{webSearchPolicy},
             #{targetRole}, #{targetExperienceBand},
             #{questionLimit}, #{followUpLimit}, #{turnLimit}, #{durationLimitMinutes},
