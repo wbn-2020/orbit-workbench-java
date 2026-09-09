@@ -42,6 +42,12 @@
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM knowledge_card
+        WHERE user_id = #{userId}
+    </select>
+
     <update id="updateContent">
         UPDATE knowledge_card
         SET title = #{title}, summary = #{summary}, tags_json = #{tagsJson},

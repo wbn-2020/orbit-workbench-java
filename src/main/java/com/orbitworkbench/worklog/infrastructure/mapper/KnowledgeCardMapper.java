@@ -19,6 +19,9 @@ public interface KnowledgeCardMapper {
                                       @Param("limit") int limit,
                                       @Param("offset") int offset);
 
+    /** 该用户知识卡片总数（知识总览用）。 */
+    long countByUser(@Param("userId") Long userId);
+
     int updateContent(@Param("id") Long id,
                       @Param("userId") Long userId,
                       @Param("title") String title,

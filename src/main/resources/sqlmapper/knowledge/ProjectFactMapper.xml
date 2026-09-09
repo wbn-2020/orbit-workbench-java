@@ -51,6 +51,20 @@
             id ASC
     </select>
 
+    <select id="countByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM project_fact
+        WHERE user_id = #{userId} AND confirmation_status = #{status}
+    </select>
+
+    <select id="recentByStatus" resultMap="ProjectFactMap">
+        SELECT <include refid="allColumns"/>
+        FROM project_fact
+        WHERE user_id = #{userId} AND confirmation_status = #{status}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
     <select id="findByIdAndUser" resultMap="ProjectFactMap">
         SELECT <include refid="allColumns"/>
         FROM project_fact

@@ -32,6 +32,12 @@
         WHERE user_id = #{userId} AND project_version_id = #{projectVersionId}
     </delete>
 
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM knowledge_chunk
+        WHERE user_id = #{userId}
+    </select>
+
     <select id="countByVersion" resultType="int">
         SELECT COUNT(*) FROM knowledge_chunk
         WHERE user_id = #{userId} AND project_version_id = #{projectVersionId}

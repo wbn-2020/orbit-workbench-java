@@ -23,6 +23,14 @@ public interface ProjectFactMapper {
             @Param("id") Long id,
             @Param("userId") Long userId);
 
+    /** 跨全部项目的状态计数（知识总览用）。 */
+    long countByStatus(@Param("userId") Long userId, @Param("status") String status);
+
+    /** 指定状态的最近条目（知识总览用，按 id 倒序）。 */
+    List<ProjectFactRecord> recentByStatus(@Param("userId") Long userId,
+                                           @Param("status") String status,
+                                           @Param("limit") int limit);
+
     int confirm(
             @Param("id") Long id,
             @Param("userId") Long userId,

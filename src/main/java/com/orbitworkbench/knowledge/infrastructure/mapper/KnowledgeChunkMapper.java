@@ -16,6 +16,9 @@ public interface KnowledgeChunkMapper {
             @Param("userId") Long userId,
             @Param("projectVersionId") Long projectVersionId);
 
+    /** 该用户全部项目知识块总数（知识总览用）。 */
+    long countByUser(@Param("userId") Long userId);
+
     /**
      * 全文检索：优先 FULLTEXT ngram 相关度排序；SQL 内按 versionId 可选过滤。
      */
