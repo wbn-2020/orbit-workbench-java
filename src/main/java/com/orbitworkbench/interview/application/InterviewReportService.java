@@ -9,6 +9,7 @@ import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.interview.api.InterviewDtos.ReportResponse;
+import com.orbitworkbench.interview.api.InterviewDtos.ReportResponse;
 import com.orbitworkbench.interview.api.InterviewDtos.ReportStateResponse;
 import com.orbitworkbench.interview.domain.InterviewReportRecord;
 import com.orbitworkbench.interview.domain.InterviewSessionRecord;
@@ -125,6 +126,20 @@ public class InterviewReportService {
         this.reportWriteService = reportWriteService;
     }
 
+    /** 流式报告的准备结果：准入校验通过的会话与拼好的 user prompt。 */
+    public record ReportStreamPreparation(InterviewSessionRecord session, String userPrompt) {}
+
+    /**
+     * 流式报告第一步：准入校验（会话归属、报告必须处于 PENDING）。
+     * 通过后由 Controller 开流透传增量；解析与落库仍在收尾，失败不落半成品。
+     */
+    public ReportStreamPreparation prepareStream(Long userId, Long sessionId, Long connectionId) {
+        InterviewSessionRecord session = ownedSession(userId, sessionId);
+        requireGeneratableReport(session.getId());
+        return new ReportStreamPreparation(session,
+                buildUserPrompt(session, turnMapper.listBySession(session.getId())));
+    }
+
     public ReportStateResponse generate(Long userId, Long sessionId, Long connectionId) {
         InterviewSessionRecord session = ownedSession(userId, sessionId);
         requireGeneratableReport(session.getId());
@@ -222,6 +237,36 @@ public class InterviewReportService {
                 session.getId(),
                 "/interviews/" + session.getId() + "/report",
                 "INTERVIEW_REPORT_READY:" + session.getId());
+    }
+
+    /** 流式端点用的暴露口：system prompt 常量。 */
+    public String systemPromptForStream() {
+        return SYSTEM_PROMPT;
+    }
+
+    public int maxOutputTokensForStream() {
+        return MAX_OUTPUT_TOKENS;
+    }
+
+    public Duration modelTimeoutForStream() {
+        return MODEL_TIMEOUT;
+    }
+
+    /**
+     * 流式收尾：模型增量已收完，解析/落库/通知与阻塞路径同一套语义。
+     * 成功返回报告状态；失败抛 ApiException（Controller 负责 markFailedAndNotify）。
+     */
+    public ReportStateResponse finalizeStreamedReport(
+            InterviewSessionRecord session, String modelOutput) {
+        ScoredReport scored = parseScoredReport(modelOutput);
+        persistScoredReport(session, scored);
+        return new ReportStateResponse(true,
+                ReportResponse.from(reportMapper.findBySessionId(session.getId())));
+    }
+
+    /** 流式失败收尾：与阻塞路径同语义地落 FAILED 并通知。 */
+    public void markFailedAndNotifyForStream(InterviewSessionRecord session, ApiException exception) {
+        markFailedAndNotify(session, exception);
     }
 
     private void markFailedAndNotify(InterviewSessionRecord session, ApiException exception) {

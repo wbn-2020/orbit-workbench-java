@@ -56,7 +56,8 @@ class InterviewSessionControllerSseTest {
         questionService = mock(InterviewQuestionService.class);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new InterviewSessionController(mock(InterviewSessionService.class),
-                        mock(InterviewReportService.class), questionService))
+                        mock(InterviewReportService.class), questionService,
+                        mock(com.orbitworkbench.aiconnection.application.AiScenarioExecutionService.class)))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 // Boot 会把 StringHttpMessageConverter 默认字符集改成 UTF-8；standalone 装配要显式对齐，
                 // 否则 SSE 里的中文题目会被写成 "?"
