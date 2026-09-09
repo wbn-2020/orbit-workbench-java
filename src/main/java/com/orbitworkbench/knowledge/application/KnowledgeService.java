@@ -125,6 +125,46 @@ public class KnowledgeService {
         return new AskResponse(answer, false, sources);
     }
 
+    /** 流式问答的准备结果：命中的来源与拼好的上下文。空命中时 sources 为空、insufficient 为 true。 */
+    public record AskStreamPreparation(List<SourceItem> sources, String userPrompt, boolean insufficient) {}
+
+    /**
+     * 流式问答第一步：检索与上下文准备（同步、快）。命中为空直接走「资料不足」，
+     * 不开流；命中则返回准备结果，由 Controller 开流透传增量。
+     */
+    public AskStreamPreparation prepareAsk(Long userId, String question, Long projectVersionId) {
+        String keyword = question.trim();
+        List<KnowledgeChunkRecord> chunks = searchSafely(userId, projectVersionId, keyword);
+        if (chunks.isEmpty()) {
+            return new AskStreamPreparation(List.of(), "", true);
+        }
+        List<SourceItem> sources = new ArrayList<>();
+        StringBuilder context = new StringBuilder();
+        for (int i = 0; i < chunks.size(); i += 1) {
+            KnowledgeChunkRecord chunk = chunks.get(i);
+            String snippet = snippet(chunk.getContent(), SOURCE_SNIPPET);
+            sources.add(new SourceItem(chunk.getRelativePath(), chunk.getChunkNo(), snippet));
+            context.append('[').append(i + 1).append("] ").append(chunk.getRelativePath())
+                    .append(" 第").append(chunk.getChunkNo()).append("段\n")
+                    .append(snippet(chunk.getContent(), 1200)).append("\n\n");
+        }
+        return new AskStreamPreparation(sources,
+                "资料：\n" + context + "\n问题：" + keyword, false);
+    }
+
+    /** 流式问答使用的系统提示词（Controller 开流用）。 */
+    public String answerSystemPrompt() {
+        return ANSWER_SYSTEM_PROMPT;
+    }
+
+    public int answerMaxTokens() {
+        return ANSWER_MAX_TOKENS;
+    }
+
+    public java.time.Duration answerTimeout() {
+        return ANSWER_TIMEOUT;
+    }
+
     public List<KnowledgeChunkRecord> searchSafely(Long userId, Long projectVersionId, String keyword) {
         List<KnowledgeChunkRecord> chunks =
                 chunkMapper.search(userId, projectVersionId, keyword, SEARCH_LIMIT);

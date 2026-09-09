@@ -50,6 +50,17 @@ public class AiScenarioExecutionService {
         this.modelGateway = modelGateway;
     }
 
+    /**
+     * 开启一次流式生成会话（SSE 化共用底座）。调用方 {@code begin()} 后自行消费
+     * {@code deltas()}，收尾时调 {@code succeed}/{@code fail}。流式路径不做备用切换。
+     */
+    public ScenarioStreamSession stream(AiScenario scenario, Long userId, Long pinnedConnectionId,
+                                        String systemPrompt, String userPrompt,
+                                        int maxOutputTokens, Duration timeout) {
+        return new ScenarioStreamSession(router, recorder, modelGateway, scenario, userId,
+                pinnedConnectionId, systemPrompt, userPrompt, maxOutputTokens, timeout);
+    }
+
     public String executeText(AiScenario scenario, Long userId, Long pinnedConnectionId,
                               String systemPrompt, String userPrompt,
                               int maxOutputTokens, Duration timeout) {
