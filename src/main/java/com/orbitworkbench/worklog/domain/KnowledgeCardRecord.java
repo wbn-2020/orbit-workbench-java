@@ -1,6 +1,7 @@
 package com.orbitworkbench.worklog.domain;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 /** 知识卡片写侧实体：蒸馏产物，标签以 JSON 数组字符串落库（`06` 工作沉淀域）。 */
 public class KnowledgeCardRecord {
@@ -11,9 +12,19 @@ public class KnowledgeCardRecord {
     private String summary;
     private Long sourceLogId;
     private String tagsJson;
+    private Integer reviewStage;
+    private LocalDate nextReviewDate;
+    private Instant lastReviewedAt;
     private int version;
     private Instant createdAt;
     private Instant updatedAt;
+
+    public Integer getReviewStage() { return reviewStage; }
+    public void setReviewStage(Integer reviewStage) { this.reviewStage = reviewStage; }
+    public LocalDate getNextReviewDate() { return nextReviewDate; }
+    public void setNextReviewDate(LocalDate nextReviewDate) { this.nextReviewDate = nextReviewDate; }
+    public Instant getLastReviewedAt() { return lastReviewedAt; }
+    public void setLastReviewedAt(Instant lastReviewedAt) { this.lastReviewedAt = lastReviewedAt; }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }

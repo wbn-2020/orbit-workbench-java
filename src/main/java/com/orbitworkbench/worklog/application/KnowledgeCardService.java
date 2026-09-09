@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
+import com.orbitworkbench.worklog.api.KnowledgeCardDtos.DueCardResponse;
+import com.orbitworkbench.worklog.api.KnowledgeCardDtos.DueListResponse;
 import com.orbitworkbench.worklog.api.KnowledgeCardDtos.KnowledgeCardResponse;
+import com.orbitworkbench.worklog.api.KnowledgeCardDtos.ReviewResponse;
 import com.orbitworkbench.worklog.api.KnowledgeCardDtos.UpdateKnowledgeCardRequest;
 import com.orbitworkbench.worklog.infrastructure.mapper.KnowledgeCardMapper;
 import com.orbitworkbench.worklog.domain.KnowledgeCardRow;
@@ -80,6 +83,44 @@ public class KnowledgeCardService {
 
     private static ApiException invalid(String message) {
         return new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.INVALID_REQUEST, message);
+    }
+
+    /** 与错题本 C-03e 同阶梯：末次回顾后第 n 档间隔天数。 */
+    static final int[] REVIEW_INTERVAL_DAYS = {1, 3, 7, 14};
+
+    /**
+     * 当日到期卡片（按用户时区判定「今天」）。
+     */
+    @Transactional(readOnly = true)
+    public DueListResponse dueCards(Long userId, java.time.LocalDate today) {
+        List<DueCardResponse> cards = mapper.listDue(userId, today, 50).stream()
+                .map(row -> new DueCardResponse(
+                        String.valueOf(row.getId()),
+                        row.getTitle(),
+                        row.getSummary(),
+                        parseTags(objectMapper, row.getTagsJson()),
+                        row.getNextReviewDate() == null ? null : row.getNextReviewDate().toString(),
+                        row.getNextReviewDate() == null ? 0
+                                : (int) java.time.temporal.ChronoUnit.DAYS.between(row.getNextReviewDate(), today),
+                        row.getReviewStage() == null ? 0 : row.getReviewStage()))
+                .toList();
+        return new DueListResponse(cards);
+    }
+
+    /**
+     * 记一次回顾：阶梯推进（1/3/7/14 天，第 4 档封顶），不回退。
+     * 未排期卡片首次回顾进 stage 1（明天到期）。
+     */
+    @Transactional
+    public ReviewResponse review(Long userId, Long id, java.time.LocalDate today) {
+        KnowledgeCardRow row = requireOwned(userId, id);
+        int currentStage = row.getReviewStage() == null ? 0 : row.getReviewStage();
+        int nextStage = Math.min(currentStage + 1, REVIEW_INTERVAL_DAYS.length);
+        int interval = REVIEW_INTERVAL_DAYS[nextStage - 1];
+        java.time.LocalDate nextDate = today.plusDays(interval);
+        java.time.Instant now = java.time.Instant.now();
+        mapper.markReviewed(id, userId, nextStage, nextDate, now);
+        return new ReviewResponse(String.valueOf(id), nextStage, nextDate.toString());
     }
 
     /** tags_json 反序列化为列表；空或解析失败都返回空列表，不猜测补值。 */

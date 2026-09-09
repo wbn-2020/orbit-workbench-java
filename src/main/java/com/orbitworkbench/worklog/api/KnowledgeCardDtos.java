@@ -24,7 +24,10 @@ public final class KnowledgeCardDtos {
             String summary,
             String sourceLogId,
             List<String> tags,
-            String createdAt
+            String createdAt,
+            Integer reviewStage,
+            String nextReviewDate,
+            String lastReviewedAt
     ) {
         public static KnowledgeCardResponse from(KnowledgeCardRow row, List<String> tags) {
             return new KnowledgeCardResponse(
@@ -33,7 +36,28 @@ public final class KnowledgeCardDtos {
                     row.getSummary(),
                     row.getSourceLogId() == null ? null : String.valueOf(row.getSourceLogId()),
                     tags,
-                    DateTimeFormatter.ISO_INSTANT.format(row.getCreatedAt()));
+                    DateTimeFormatter.ISO_INSTANT.format(row.getCreatedAt()),
+                    row.getReviewStage(),
+                    row.getNextReviewDate() == null ? null : row.getNextReviewDate().toString(),
+                    row.getLastReviewedAt() == null ? null : DateTimeFormatter.ISO_INSTANT.format(row.getLastReviewedAt()));
         }
     }
+
+    public record DueCardResponse(
+            String id,
+            String title,
+            String summary,
+            List<String> tags,
+            String nextReviewDate,
+            int overdueDays,
+            int reviewStage
+    ) {}
+
+    public record DueListResponse(List<DueCardResponse> cards) {}
+
+    public record ReviewResponse(
+            String id,
+            int reviewStage,
+            String nextReviewDate
+    ) {}
 }
