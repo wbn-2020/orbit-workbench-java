@@ -104,6 +104,20 @@ public class GlobalExceptionHandler {
                 "没有权限执行此操作", request, null);
     }
 
+    /**
+     * 未映射的 API 路径（如前端先于后端上线调新端点）在 Spring Boot 3.2+ 会以
+     * {@link NoResourceFoundException} 抛出。此前没有任何分支接住，落到兜底分支变成
+     * 500 {@code UNKNOWN_PROVIDER_ERROR}，把「这个接口不存在」伪装成服务器故障——
+     * 2026-09-09 知识总览联调时被旧后端进程真实撞出：B1 新端点在旧 jar 上呈现为 500，
+     * 掩盖了「后端版本落后」的真实原因。必须显式 404，让版本错位一眼可辨。
+     */
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    ResponseEntity<ProblemDetail> handleNoResource(org.springframework.web.servlet.resource.NoResourceFoundException exception,
+                                                   HttpServletRequest request) {
+        return response(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND,
+                "接口或资源不存在：若前端已更新而后端未重新部署，请重启后端到当前版本", request, null);
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ProblemDetail> handleUnexpected(Exception exception, HttpServletRequest request) {
         log.error("未预期异常：{} {}", request.getMethod(), request.getRequestURI(), exception);
