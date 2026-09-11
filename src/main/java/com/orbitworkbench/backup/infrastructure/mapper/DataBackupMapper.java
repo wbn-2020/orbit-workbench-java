@@ -1,0 +1,42 @@
+package com.orbitworkbench.backup.infrastructure.mapper;
+
+import java.util.List;
+import java.util.Map;
+import org.apache.ibatis.annotations.Param;
+
+/**
+ * 备份用的通用 mapper。
+ * 表名一律来自 {@code DataBackupService} 内的固定白名单常量，不接受任何外部输入，
+ * 因此这里使用 {@code ${table}} 拼接是可控的；列名同样先经 {@link #columnsOf} 校验后再拼。
+ */
+public interface DataBackupMapper {
+
+    /** 表的真实列名（含生成列），用于校验导入数据里的列是否合法。 */
+    List<String> columnsOf(@Param("table") String table);
+
+    List<Map<String, Object>> selectByUser(@Param("table") String table, @Param("userId") Long userId);
+
+    int deleteByUser(@Param("table") String table, @Param("userId") Long userId);
+
+    /**
+     * 无 user_id 列的表（如 interview_turn，经 session 间接归属）用此变体：
+     * {@code ownerColumn} 指定本表的归属过滤列，{@code ownerValue} 为该列值。
+     */
+    List<Map<String, Object>> selectByOwner(@Param("table") String table,
+                                            @Param("ownerColumn") String ownerColumn,
+                                            @Param("ownerTable") String ownerTable,
+                                            @Param("userId") Long userId);
+
+    int deleteByOwner(@Param("table") String table,
+                      @Param("ownerColumn") String ownerColumn,
+                      @Param("ownerTable") String ownerTable,
+                      @Param("userId") Long userId);
+
+    int insertRow(@Param("table") String table,
+                  @Param("columns") List<String> columns,
+                  @Param("values") List<Object> values);
+
+    void disableForeignKeyChecks();
+
+    void enableForeignKeyChecks();
+}

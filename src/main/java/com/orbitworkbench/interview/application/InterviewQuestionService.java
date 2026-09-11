@@ -25,7 +25,6 @@ import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.RequestEnums;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.codec.ServerSentEvent;
@@ -57,6 +56,7 @@ public class InterviewQuestionService {
     private final AiCallAuditRecorder aiCallAuditRecorder;
     private final ModelGateway modelGateway;
     private final ObjectMapper objectMapper;
+    private final InterviewTurnWriteService turnWriteService;
 
     public InterviewQuestionService(InterviewSessionMapper sessionMapper,
                                     InterviewTurnMapper turnMapper,
@@ -64,7 +64,8 @@ public class InterviewQuestionService {
                                     AiScenarioExecutionService aiScenarioExecution,
                                     AiCallAuditRecorder aiCallAuditRecorder,
                                     ModelGateway modelGateway,
-                                    ObjectMapper objectMapper) {
+                                    ObjectMapper objectMapper,
+                                    InterviewTurnWriteService turnWriteService) {
         this.sessionMapper = sessionMapper;
         this.turnMapper = turnMapper;
         this.aiScenarioRouter = aiScenarioRouter;
@@ -72,6 +73,7 @@ public class InterviewQuestionService {
         this.aiCallAuditRecorder = aiCallAuditRecorder;
         this.modelGateway = modelGateway;
         this.objectMapper = objectMapper;
+        this.turnWriteService = turnWriteService;
     }
 
     public TurnResponse next(Long userId, Long sessionId, NextQuestionRequest request) {
@@ -84,21 +86,16 @@ public class InterviewQuestionService {
             requireLastAnswered(session.getId());
         }
 
-        PromptPair pair = buildPrompt(session, turnMapper.listBySession(session.getId()),
-                turnType, request.instruction());
+        List<InterviewTurnRecord> history = turnMapper.listBySession(session.getId());
+        PromptPair pair = buildPrompt(session, history, turnType, request.instruction());
+        int expectedTurnCount = history.size();
         String question = requireQuestion(aiScenarioExecution.executeText(
                 AiScenario.INTERVIEW_QUESTION, userId,
                 session.getAiConnectionIdSnapshot(), pair.system(), pair.user(),
                 MAX_OUTPUT_TOKENS, MODEL_TIMEOUT));
 
-        Instant now = Instant.now();
-        InterviewTurnRecord turn = new InterviewTurnRecord();
-        turn.setSessionId(session.getId());
-        turn.setTurnNo(turnMapper.countBySession(session.getId()) + 1);
-        turn.setTurnType(turnType);
-        turn.setQuestion(question);
-        turn.setCreatedAt(now);
-        turnMapper.insert(turn);
+        InterviewTurnRecord turn = turnWriteService.append(userId, sessionId, turnType,
+                question, expectedTurnCount);
         return TurnResponse.from(turnMapper.findById(turn.getId()));
     }
 
@@ -126,25 +123,27 @@ public class InterviewQuestionService {
         // 结论当场固化到会话：连接的联网形状以后可能被改，历史会话不能跟着被改写（V32）。
         sessionMapper.updateWebSearchOutcome(session.getId(),
                 route.primary().webSearchDialect().name(), webSearch.outcome(), webSearch.reason());
-        PromptPair pair = buildPrompt(session, turnMapper.listBySession(session.getId()),
-                turnType, request.instruction());
+        List<InterviewTurnRecord> history = turnMapper.listBySession(session.getId());
+        PromptPair pair = buildPrompt(session, history, turnType, request.instruction());
         Long sessionIdValue = session.getId();
 
-        return Flux.defer(() -> streamEvents(userId, sessionIdValue, turnType, route, pair, webSearch));
+        return Flux.defer(() -> streamEvents(userId, sessionIdValue, turnType, route, pair,
+                webSearch, history.size()));
     }
 
     private Flux<ServerSentEvent<String>> streamEvents(Long userId, Long sessionId,
                                                        InterviewTurnType turnType,
                                                        AiScenarioRouter.ResolvedRoute route,
                                                        PromptPair pair,
-                                                       WebSearchDecision webSearch) {
+                                                       WebSearchDecision webSearch,
+                                                       int expectedTurnCount) {
         StringBuilder buffer = new StringBuilder();
         int requestChars = pair.system().length() + pair.user().length();
         long start = System.nanoTime();
         Long auditId = aiCallAuditRecorder.start(userId, AiScenario.INTERVIEW_QUESTION, route,
                 requestChars, aiCallAuditRecorder.snapshotJson(AiScenario.INTERVIEW_QUESTION, route,
                         MAX_OUTPUT_TOKENS, true, webSearch));
-        int turnNo = turnMapper.countBySession(sessionId) + 1;
+        int turnNo = expectedTurnCount + 1;
         ServerSentEvent<String> startEvent = sse("start", "{\"turnNo\":" + turnNo
                 + ",\"type\":\"" + turnType + "\"}");
         Flux<ServerSentEvent<String>> body = modelGateway
@@ -164,14 +163,8 @@ public class InterviewQuestionService {
                         requestChars, buffer.length(), route.primary().connectionId(), false);
                 return Flux.just(sse("error", "面试出题未完成：模型未返回有效题目"));
             }
-            Instant now = Instant.now();
-            InterviewTurnRecord turn = new InterviewTurnRecord();
-            turn.setSessionId(sessionId);
-            turn.setTurnNo(turnNo);
-            turn.setTurnType(turnType);
-            turn.setQuestion(question);
-            turn.setCreatedAt(now);
-            turnMapper.insert(turn);
+            InterviewTurnRecord turn = turnWriteService.append(userId, sessionId, turnType,
+                    question, turnNo - 1);
             aiCallAuditRecorder.finish(auditId, userId, AiScenario.INTERVIEW_QUESTION,
                     AiCallAuditRecorder.STATUS_SUCCEEDED, null, elapsedMillis(start),
                     requestChars, question.length(), route.primary().connectionId(), false);

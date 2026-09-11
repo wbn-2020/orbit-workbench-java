@@ -9,7 +9,6 @@ import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.interview.api.InterviewDtos.ReportResponse;
-import com.orbitworkbench.interview.api.InterviewDtos.ReportResponse;
 import com.orbitworkbench.interview.api.InterviewDtos.ReportStateResponse;
 import com.orbitworkbench.interview.domain.InterviewReportRecord;
 import com.orbitworkbench.interview.domain.InterviewSessionRecord;

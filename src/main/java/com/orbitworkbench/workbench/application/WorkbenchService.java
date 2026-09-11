@@ -7,11 +7,16 @@ import com.orbitworkbench.workbench.api.WorkbenchDtos.WorkbenchSummaryResponse;
 import com.orbitworkbench.workbench.domain.WorkbenchLastEvaluation;
 import com.orbitworkbench.workbench.infrastructure.mapper.WorkbenchMapper;
 import com.orbitworkbench.preference.application.PreferenceService;
+import com.orbitworkbench.schedule.api.ScheduleDtos.AgendaItemResponse;
+import com.orbitworkbench.schedule.application.ScheduleService;
+import com.orbitworkbench.schedule.domain.ScheduleStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -19,22 +24,31 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 工作台首页聚合（v2）。所有指标都来自我们自己的模块或面试报告只读统计，
- * 不写任何表；今日待办（agenda）当前后端没有独立来源，返回空数组而非编造。
+ * 不写任何表；今日待办（agenda）复用 schedule 模块的只读 agenda（日程 / 面试 / 复习 / 投递），
+ * 只做映射与截断，来源为空时如实返回空数组而非编造。
  */
 @Service
 public class WorkbenchService {
 
+    /** 首页只展示最近若干条待办，避免长列表把首页压成一屏滚动。 */
+    private static final int AGENDA_MAX_ITEMS = 8;
+    private static final DateTimeFormatter AGENDA_TIME = DateTimeFormatter.ofPattern("HH:mm");
+
     private final WorkbenchMapper mapper;
+    private final ScheduleService scheduleService;
     private final PreferenceService preferenceService;
     private final Clock clock;
 
     @Autowired
-    public WorkbenchService(WorkbenchMapper mapper, PreferenceService preferenceService) {
-        this(mapper, preferenceService, Clock.systemUTC());
+    public WorkbenchService(WorkbenchMapper mapper, ScheduleService scheduleService,
+                            PreferenceService preferenceService) {
+        this(mapper, scheduleService, preferenceService, Clock.systemUTC());
     }
 
-    WorkbenchService(WorkbenchMapper mapper, PreferenceService preferenceService, Clock clock) {
+    WorkbenchService(WorkbenchMapper mapper, ScheduleService scheduleService,
+                     PreferenceService preferenceService, Clock clock) {
         this.mapper = mapper;
+        this.scheduleService = scheduleService;
         this.preferenceService = preferenceService;
         this.clock = clock;
     }
@@ -77,7 +91,24 @@ public class WorkbenchService {
         Instant end = today.plusDays(1).atStartOfDay(zone).toInstant();
         int focusToday = (int) mapper.focusMinutesToday(userId, start, end);
 
-        return new WorkbenchSummaryResponse(greeting, modes, assets, List.of(), focusToday);
+        return new WorkbenchSummaryResponse(greeting, modes, assets, agenda(userId, zone, start, end), focusToday);
+    }
+
+    /** 复用 schedule 模块的只读 agenda：日程 / 面试 / 复习任务 / 投递跟进，按开始时间排序。 */
+    private List<AgendaItem> agenda(Long userId, ZoneId zone, Instant start, Instant end) {
+        List<AgendaItemResponse> source = scheduleService.agenda(userId, start, end);
+        List<AgendaItem> items = new ArrayList<>();
+        for (AgendaItemResponse item : source) {
+            if (items.size() >= AGENDA_MAX_ITEMS) {
+                break;
+            }
+            items.add(new AgendaItem(
+                    item.sourceType() + ":" + item.sourceId(),
+                    item.allDay() ? "全天" : AGENDA_TIME.format(item.startAt().atZone(zone)),
+                    item.title(),
+                    ScheduleStatus.COMPLETED.name().equals(item.status())));
+        }
+        return items;
     }
 
     private static String mapGrade(WorkbenchLastEvaluation evaluation) {

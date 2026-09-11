@@ -74,7 +74,10 @@ class InterviewQuestionServiceTest {
     void setUp() {
         service = new InterviewQuestionService(sessionMapper, turnMapper, aiScenarioRouter,
                 aiScenarioExecution, aiCallAuditRecorder, modelGateway,
-                new com.fasterxml.jackson.databind.ObjectMapper());
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                new InterviewTurnWriteService(sessionMapper, turnMapper));
+        when(sessionMapper.findByIdForUpdate(any())).thenAnswer(invocation ->
+                sessionMapper.findById(invocation.getArgument(0)));
         when(aiScenarioRouter.resolve(any(), any(), any())).thenReturn(
                 new AiScenarioRouter.ResolvedRoute(PRIMARY, null, false, AiScenarioRouter.SOURCE_PINNED));
         when(aiCallAuditRecorder.start(any(), any(), any(), anyInt(), any())).thenReturn(77L);

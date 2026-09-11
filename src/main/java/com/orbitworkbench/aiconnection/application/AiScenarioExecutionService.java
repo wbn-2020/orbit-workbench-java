@@ -58,7 +58,14 @@ public class AiScenarioExecutionService {
                                         String systemPrompt, String userPrompt,
                                         int maxOutputTokens, Duration timeout) {
         return new ScenarioStreamSession(router, recorder, modelGateway, scenario, userId,
-                pinnedConnectionId, systemPrompt, userPrompt, maxOutputTokens, timeout);
+                pinnedConnectionId, systemPrompt, userPrompt, maxOutputTokens, timeout, WebSearchMode.DISABLED);
+    }
+
+    public ScenarioStreamSession stream(AiScenario scenario, Long userId, Long pinnedConnectionId,
+                                        String systemPrompt, String userPrompt,
+                                        int maxOutputTokens, Duration timeout, WebSearchMode webSearch) {
+        return new ScenarioStreamSession(router, recorder, modelGateway, scenario, userId,
+                pinnedConnectionId, systemPrompt, userPrompt, maxOutputTokens, timeout, webSearch);
     }
 
     public String executeText(AiScenario scenario, Long userId, Long pinnedConnectionId,

@@ -22,6 +22,8 @@ public interface InterviewSessionMapper {
 
     InterviewSessionRecord findById(@Param("id") Long id);
 
+    InterviewSessionRecord findByIdForUpdate(@Param("id") Long id);
+
     List<InterviewSessionRecord> listByUser(
             @Param("userId") Long userId,
             @Param("status") InterviewSessionStatus status);

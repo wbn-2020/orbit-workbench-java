@@ -75,6 +75,13 @@
         WHERE interviewer_id = #{interviewerId}
     </select>
 
+    <select id="findByIdForUpdate" resultMap="InterviewSessionMap">
+        SELECT <include refid="allColumns"/>
+        FROM interview_session
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
     <select id="findById" resultMap="InterviewSessionMap">
         SELECT <include refid="allColumns"/>
         FROM interview_session

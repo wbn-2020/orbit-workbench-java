@@ -1,6 +1,7 @@
 package com.orbitworkbench.knowledge.api;
 
 import com.fasterxml.jackson.databind.node.TextNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.application.ScenarioStreamSession;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
@@ -29,15 +30,18 @@ public class KnowledgeController {
     private final KnowledgeBuildService knowledgeBuildService;
     private final ProjectFactService factService;
     private final AiScenarioExecutionService aiScenarioExecution;
+    private final ObjectMapper objectMapper;
 
     public KnowledgeController(KnowledgeService knowledgeService,
                                KnowledgeBuildService knowledgeBuildService,
                                ProjectFactService factService,
-                               AiScenarioExecutionService aiScenarioExecution) {
+                               AiScenarioExecutionService aiScenarioExecution,
+                               ObjectMapper objectMapper) {
         this.knowledgeService = knowledgeService;
         this.knowledgeBuildService = knowledgeBuildService;
         this.factService = factService;
         this.aiScenarioExecution = aiScenarioExecution;
+        this.objectMapper = objectMapper;
     }
 
     @PostMapping("/projects/{projectId}/versions/{versionId}/knowledge/build")
@@ -69,7 +73,7 @@ public class KnowledgeController {
                 knowledgeService.prepareAsk(userId, request.question(), request.projectVersionId());
         if (preparation.insufficient()) {
             return Flux.just(sse("done",
-                    "{\"insufficient\":true,\"answer\":\"资料中未找到与问题相关的内容。\"}"));
+                    "{\"insufficient\":true,\"answer\":\"资料中未找到与问题相关的内容。\",\"sources\":[]}"));
         }
         ScenarioStreamSessionHandle handle = openStream(userId, preparation);
         StringBuilder buffer = new StringBuilder();
@@ -82,13 +86,16 @@ public class KnowledgeController {
             handle.succeed(buffer.length());
             String answer = buffer.toString().trim();
             return Flux.just(sse("done",
-                    "{\"insufficient\":false,\"answer\":" + jsonEscape(answer) + "}"));
+                    "{\"insufficient\":false,\"answer\":" + jsonEscape(answer)
+                            + ",\"sources\":" + objectMapper.valueToTree(preparation.sources()) + "}"));
         });
         return body.concatWith(tail)
                 .onErrorResume((Throwable failure) -> {
                     ApiException mapped = handle.fail(asRuntime(failure), buffer.length());
                     return Flux.just(sse("error", mapped.getMessage()));
-                });
+                })
+                .doOnCancel(() -> handle.fail(new java.util.concurrent.CancellationException(
+                        "Knowledge stream cancelled"), buffer.length()));
     }
 
     private ScenarioStreamSessionHandle openStream(Long userId,

@@ -8,7 +8,6 @@ import com.orbitworkbench.ai.application.WebSearchDecision;
 import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.shared.api.ApiException;
-import com.orbitworkbench.shared.api.ErrorCode;
 import java.time.Duration;
 import reactor.core.publisher.Flux;
 
@@ -31,6 +30,9 @@ public final class ScenarioStreamSession {
     private final String userPrompt;
     private final int maxOutputTokens;
     private final Duration timeout;
+    private final WebSearchMode requestedWebSearch;
+    private WebSearchDecision webSearch;
+    private final java.util.concurrent.atomic.AtomicBoolean finished = new java.util.concurrent.atomic.AtomicBoolean();
 
     private Long auditId;
     private int requestChars;
@@ -40,7 +42,7 @@ public final class ScenarioStreamSession {
     ScenarioStreamSession(AiScenarioRouter router, AiCallAuditRecorder recorder,
                           ModelGateway modelGateway, AiScenario scenario, Long userId,
                           Long pinnedConnectionId, String systemPrompt, String userPrompt,
-                          int maxOutputTokens, Duration timeout) {
+                          int maxOutputTokens, Duration timeout, WebSearchMode requestedWebSearch) {
         this.router = router;
         this.recorder = recorder;
         this.modelGateway = modelGateway;
@@ -51,28 +53,34 @@ public final class ScenarioStreamSession {
         this.userPrompt = userPrompt;
         this.maxOutputTokens = maxOutputTokens;
         this.timeout = timeout;
+        this.requestedWebSearch = requestedWebSearch;
     }
 
     /** 开流前调用：解析账户并写 RUNNING 审计。抛出的 ApiException 语义是「流未开始」，调用方可直接回 4xx/5xx。 */
     public void begin() {
         resolvedRoute = router.resolve(userId, scenario, pinnedConnectionId);
+        webSearch = WebSearchDecision.resolve(requestedWebSearch, resolvedRoute.primary());
         requestChars = chars(systemPrompt) + chars(userPrompt);
         start = System.nanoTime();
         auditId = recorder.start(userId, scenario, resolvedRoute, requestChars,
                 recorder.snapshotJson(scenario, resolvedRoute, maxOutputTokens, true,
-                        WebSearchDecision.resolve(WebSearchMode.DISABLED, resolvedRoute.primary())));
+                        webSearch));
     }
 
     /** 增量事件流。文本事件原样透传；上游失败映射为 ApiException 供调用方发 error 事件。 */
     public Flux<String> deltas() {
-        return modelGateway.stream(new AiInvocation(
+        return Flux.defer(() -> modelGateway.stream(new AiInvocation(
                         resolvedRoute.primary(), systemPrompt, userPrompt,
-                        null, null, true, maxOutputTokens))
+                        null, null, true, maxOutputTokens).withWebSearch(webSearch.effective())))
+                .takeUntilOther(reactor.core.publisher.Mono.delay(timeout)
+                        .flatMap(ignored -> reactor.core.publisher.Mono.error(
+                                new java.util.concurrent.TimeoutException("Model generation timed out"))))
                 .mapNotNull(AiStreamEvent::text);
     }
 
     /** 正常收流：审计 SUCCEEDED。fullText 由调用方按已发增量统计。 */
     public void succeed(int fullTextChars) {
+        if (!finished.compareAndSet(false, true)) return;
         recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_SUCCEEDED, null,
                 elapsedMillis(), requestChars, fullTextChars,
                 resolvedRoute.primary().connectionId(), false);
@@ -81,6 +89,7 @@ public final class ScenarioStreamSession {
     /** 失败收流：把任意异常映射为带真实错误码的 ApiException 并记 FAILED 审计。 */
     public ApiException fail(RuntimeException failure, int partialChars) {
         ApiException mapped = AiCallFailures.toApiException(scenario.label(), failure);
+        if (!finished.compareAndSet(false, true)) return mapped;
         recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_FAILED,
                 mapped.getErrorCode().name(), elapsedMillis(), requestChars, partialChars,
                 resolvedRoute.primary().connectionId(), false);

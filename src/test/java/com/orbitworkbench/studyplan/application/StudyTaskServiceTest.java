@@ -180,6 +180,34 @@ class StudyTaskServiceTest {
     }
 
     @Test
+    void postponedTasksCanResumeCompleteSkipOrBePostponedAgain() {
+        when(mapper.findById(31L)).thenReturn(task(StudyTaskStatus.POSTPONED));
+        when(mapper.updateStatus(eq(31L), eq(7L), eq(StudyTaskStatus.POSTPONED),
+                any(), org.mockito.ArgumentMatchers.nullable(LocalDate.class), any())).thenReturn(1);
+        service.start(7L, 31L);
+        service.complete(7L, 31L);
+        service.skip(7L, 31L);
+        service.postpone(7L, 31L, LocalDate.of(2026, 9, 20));
+        verify(mapper, org.mockito.Mockito.times(4)).updateStatus(eq(31L), eq(7L),
+                eq(StudyTaskStatus.POSTPONED), any(),
+                org.mockito.ArgumentMatchers.nullable(LocalDate.class), any());
+    }
+
+    @Test
+    void reportSuggestionRetainsAll300Characters() throws Exception {
+        String title = "x".repeat(300);
+        when(reportService.readyStudySuggestions(7L, 21L)).thenReturn(List.of(title));
+        when(reportService.reportIdOfSession(21L)).thenReturn(33L);
+        assertEquals(1, service.generateFromReport(7L, 21L));
+        ArgumentCaptor<StudyTaskRecord> captor = ArgumentCaptor.forClass(StudyTaskRecord.class);
+        verify(mapper).insert(captor.capture());
+        assertEquals(title, captor.getValue().getTitle());
+        String migration = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/resources/db/migration/V39__study_task_report_title_length.sql"));
+        org.junit.jupiter.api.Assertions.assertTrue(migration.contains("title VARCHAR(300) NOT NULL"));
+    }
+
+    @Test
     void createRejectsUnknownPriorityAsBadRequest() {
         ApiException exception = assertThrows(ApiException.class, () -> service.create(7L,
                 new CreateTaskRequest("复盘 Redis 双写一致性", "Redis", "REVIEW", "URGENT", 30,

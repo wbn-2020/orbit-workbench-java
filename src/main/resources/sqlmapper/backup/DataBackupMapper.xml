@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  通用备份 SQL：表名来自服务端固定白名单，列名来自 information_schema 校验结果，
+  两者都不接受用户输入，因此 ${} 拼接是安全的。所有语句都在同一个事务连接里执行。
+-->
+<mapper namespace="com.orbitworkbench.backup.infrastructure.mapper.DataBackupMapper">
+
+    <select id="columnsOf" resultType="java.lang.String">
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = #{table}
+        ORDER BY ordinal_position
+    </select>
+
+    <select id="selectByUser" resultType="java.util.LinkedHashMap">
+        SELECT * FROM ${table} WHERE user_id = #{userId}
+    </select>
+
+    <delete id="deleteByUser">
+        DELETE FROM ${table} WHERE user_id = #{userId}
+    </delete>
+
+    <select id="selectByOwner" resultType="java.util.LinkedHashMap">
+        SELECT t.* FROM ${table} t
+        JOIN ${ownerTable} o ON t.${ownerColumn} = o.id
+        WHERE o.user_id = #{userId}
+    </select>
+
+    <delete id="deleteByOwner">
+        DELETE t FROM ${table} t
+        JOIN ${ownerTable} o ON t.${ownerColumn} = o.id
+        WHERE o.user_id = #{userId}
+    </delete>
+
+    <insert id="insertRow">
+        INSERT INTO ${table}
+        (<foreach collection="columns" item="c" separator=",">${c}</foreach>)
+        VALUES
+        (<foreach collection="values" item="v" separator=",">#{v}</foreach>)
+    </insert>
+
+    <update id="disableForeignKeyChecks">
+        SET FOREIGN_KEY_CHECKS = 0
+    </update>
+
+    <update id="enableForeignKeyChecks">
+        SET FOREIGN_KEY_CHECKS = 1
+    </update>
+
+</mapper>

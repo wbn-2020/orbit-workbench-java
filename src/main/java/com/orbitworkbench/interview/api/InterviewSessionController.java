@@ -5,7 +5,6 @@ import com.orbitworkbench.interview.application.InterviewQuestionService;
 import com.orbitworkbench.interview.application.InterviewReportService;
 import com.orbitworkbench.interview.application.InterviewSessionService;
 import jakarta.validation.Valid;
-import com.fasterxml.jackson.databind.node.TextNode;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.shared.api.ApiException;
@@ -143,7 +142,13 @@ public class InterviewSessionController {
                 reportService.systemPromptForStream(),
                 preparation.userPrompt(),
                 reportService.maxOutputTokensForStream(),
-                reportService.modelTimeoutForStream());
+                reportService.modelTimeoutForStream(),
+                WebSearchMode.parse(preparation.session().getWebSearchPolicy()));
+        try {
+            session.begin();
+        } catch (ApiException rejection) {
+            return Flux.just(sse("error", rejection.getMessage()));
+        }
         StringBuilder buffer = new StringBuilder();
         Flux<ServerSentEvent<String>> body = session.deltas()
                 .map((String delta) -> {
@@ -151,24 +156,19 @@ public class InterviewSessionController {
                     return sse("delta", delta);
                 });
         Flux<ServerSentEvent<String>> tail = Flux.defer(() -> {
-            try {
-                reportService.finalizeStreamedReport(preparation.session(), buffer.toString());
-                return Flux.just(sse("done", "{\"reportReady\":true}"));
-            } catch (ApiException failure) {
-                reportService.markFailedAndNotifyForStream(preparation.session(), failure);
-                return Flux.just(sse("error", failure.getMessage()));
-            }
+            reportService.finalizeStreamedReport(preparation.session(), buffer.toString());
+            session.succeed(buffer.length());
+            return Flux.just(sse("done", "{\"reportReady\":true}"));
         });
         return body.concatWith(tail)
                 .onErrorResume((Throwable failure) -> {
-                    ApiException mapped = failure instanceof ApiException api
-                            ? api
-                            : new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY,
-                                    com.orbitworkbench.shared.api.ErrorCode.UPSTREAM_UNAVAILABLE,
-                                    "报告生成中断");
+                    ApiException mapped = session.fail(failure instanceof RuntimeException runtime
+                            ? runtime : new IllegalStateException(failure), buffer.length());
                     reportService.markFailedAndNotifyForStream(preparation.session(), mapped);
                     return Flux.just(sse("error", mapped.getMessage()));
-                });
+                })
+                .doOnCancel(() -> session.fail(new java.util.concurrent.CancellationException(
+                        "Report stream cancelled"), buffer.length()));
     }
 
     @PostMapping("/{id}/report/generate")

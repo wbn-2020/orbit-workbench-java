@@ -5,12 +5,14 @@ import jakarta.validation.ConstraintViolationException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.MDC;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -118,6 +120,27 @@ public class GlobalExceptionHandler {
                 "接口或资源不存在：若前端已更新而后端未重新部署，请重启后端到当前版本", request, null);
     }
 
+    /**
+     * 请求方法不被支持（某端点只提供 POST 却收到 GET）是客户端调用形态问题，
+     * 必须返回 405 并按 RFC 9110 带上 {@code Allow} 头列出可用方法：
+     * 此前没有任何分支接住，落到兜底分支变成 500 {@code UNKNOWN_PROVIDER_ERROR}，
+     * 把「你用错了 HTTP 方法」伪装成服务器故障 —— 2026-09-11 验收 ZIP 导入时
+     * 用 {@code GET /projects/{id}/versions} 真实撞出，日志实锤
+     * {@code HttpRequestMethodNotSupportedException}（traceId 772f475f）。
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    ResponseEntity<ProblemDetail> handleMethodNotSupported(HttpRequestMethodNotSupportedException exception,
+                                                            HttpServletRequest request) {
+        ResponseEntity<ProblemDetail> body =
+                response(HttpStatus.METHOD_NOT_ALLOWED, ErrorCode.METHOD_NOT_ALLOWED,
+                        "该接口不支持 " + exception.getMethod() + " 方法", request, null);
+        HttpHeaders headers = new HttpHeaders();
+        if (exception.getSupportedHttpMethods() != null && !exception.getSupportedHttpMethods().isEmpty()) {
+            headers.setAllow(exception.getSupportedHttpMethods());
+        }
+        return new ResponseEntity<>(body.getBody(), headers, HttpStatus.METHOD_NOT_ALLOWED);
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ProblemDetail> handleUnexpected(Exception exception, HttpServletRequest request) {
         log.error("未预期异常：{} {}", request.getMethod(), request.getRequestURI(), exception);
@@ -147,6 +170,7 @@ public class GlobalExceptionHandler {
             case UNAUTHORIZED -> "未登录";
             case FORBIDDEN -> "禁止访问";
             case NOT_FOUND -> "资源不存在";
+            case METHOD_NOT_ALLOWED -> "方法不被允许";
             case CONFLICT -> "状态冲突";
             default -> "请求处理失败";
         };

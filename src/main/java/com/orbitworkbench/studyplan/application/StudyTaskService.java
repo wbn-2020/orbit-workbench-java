@@ -65,7 +65,7 @@ public class StudyTaskService {
     @Transactional
     public TaskResponse start(Long userId, Long taskId) {
         StudyTaskRecord record = ownedTask(userId, taskId);
-        requireStatus(record, StudyTaskStatus.PLANNED, "开始");
+        requirePlannedOrPostponed(record, "开始");
         updateStatus(record, StudyTaskStatus.IN_PROGRESS, null);
         return TaskResponse.from(reload(taskId));
     }
@@ -74,8 +74,9 @@ public class StudyTaskService {
     public TaskResponse complete(Long userId, Long taskId) {
         StudyTaskRecord record = ownedTask(userId, taskId);
         if (record.getStatus() != StudyTaskStatus.PLANNED
+                && record.getStatus() != StudyTaskStatus.POSTPONED
                 && record.getStatus() != StudyTaskStatus.IN_PROGRESS) {
-            throw conflict("仅计划中或进行中的任务可以完成：当前 " + record.getStatus());
+            throw conflict("仅计划中、已延期或进行中的任务可以完成：当前 " + record.getStatus());
         }
         updateStatus(record, StudyTaskStatus.COMPLETED, null);
         return TaskResponse.from(reload(taskId));
@@ -84,7 +85,7 @@ public class StudyTaskService {
     @Transactional
     public TaskResponse postpone(Long userId, Long taskId, LocalDate newDueDate) {
         StudyTaskRecord record = ownedTask(userId, taskId);
-        requireStatus(record, StudyTaskStatus.PLANNED, "延期");
+        requirePlannedOrPostponed(record, "延期");
         updateStatus(record, StudyTaskStatus.POSTPONED, newDueDate);
         return TaskResponse.from(reload(taskId));
     }
@@ -92,7 +93,7 @@ public class StudyTaskService {
     @Transactional
     public TaskResponse skip(Long userId, Long taskId) {
         StudyTaskRecord record = ownedTask(userId, taskId);
-        requireStatus(record, StudyTaskStatus.PLANNED, "跳过");
+        requirePlannedOrPostponed(record, "跳过");
         updateStatus(record, StudyTaskStatus.SKIPPED, null);
         return TaskResponse.from(reload(taskId));
     }
@@ -120,8 +121,14 @@ public class StudyTaskService {
         int created = 0;
         for (String suggestion : suggestions) {
             String title = suggestion.trim();
-            if (title.isEmpty()
-                    || mapper.countBySourceTitle(userId, StudyTaskSource.REPORT, reportId, title) > 0) {
+            if (title.isEmpty()) {
+                continue;
+            }
+            // V39 后 title 列宽 300；防御性截断只在超限时触发，日常建议不受影响
+            if (title.length() > 300) {
+                title = title.substring(0, 300);
+            }
+            if (mapper.countBySourceTitle(userId, StudyTaskSource.REPORT, reportId, title) > 0) {
                 continue;
             }
             Instant now = Instant.now();
@@ -153,9 +160,10 @@ public class StudyTaskService {
         return mapper.findById(taskId);
     }
 
-    private void requireStatus(StudyTaskRecord record, StudyTaskStatus expected, String action) {
-        if (record.getStatus() != expected) {
-            throw conflict("仅" + expected + "状态的任务可以" + action + "：当前 " + record.getStatus());
+    private void requirePlannedOrPostponed(StudyTaskRecord record, String action) {
+        if (record.getStatus() != StudyTaskStatus.PLANNED
+                && record.getStatus() != StudyTaskStatus.POSTPONED) {
+            throw conflict("仅计划中或已延期的任务可以" + action + "：当前 " + record.getStatus());
         }
     }
 
