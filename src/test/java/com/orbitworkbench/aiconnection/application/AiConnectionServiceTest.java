@@ -286,6 +286,8 @@ class AiConnectionServiceTest {
                 apiKey,
                 30000,
                 null,
+                null,
+                null,
                 null);
     }
 

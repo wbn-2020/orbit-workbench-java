@@ -15,6 +15,16 @@ public class CallAuditRecord {
     private Integer latencyMs;
     private int requestChars;
     private int responseChars;
+    private Integer inputTokens;
+    private Integer outputTokens;
+    private java.math.BigDecimal costAmount;
+    public Integer getInputTokens() { return inputTokens; }
+    public void setInputTokens(Integer inputTokens) { this.inputTokens = inputTokens; }
+    public Integer getOutputTokens() { return outputTokens; }
+    public void setOutputTokens(Integer outputTokens) { this.outputTokens = outputTokens; }
+    public java.math.BigDecimal getCostAmount() { return costAmount; }
+    public void setCostAmount(java.math.BigDecimal costAmount) { this.costAmount = costAmount; }
+
     private String configurationSnapshotJson;
     private Instant createdAt;
     private Instant finishedAt;

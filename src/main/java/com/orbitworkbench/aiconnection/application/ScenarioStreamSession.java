@@ -38,6 +38,9 @@ public final class ScenarioStreamSession {
     private int requestChars;
     private long start;
     private AiScenarioRouter.ResolvedRoute resolvedRoute;
+    /** 流尾 usage（适配器在 usage.updated / run.completed 上报）；null 表示上游没报，不是 0。 */
+    private final java.util.concurrent.atomic.AtomicReference<com.orbitworkbench.ai.application.AiUsage> observedUsage =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     ScenarioStreamSession(AiScenarioRouter router, AiCallAuditRecorder recorder,
                           ModelGateway modelGateway, AiScenario scenario, Long userId,
@@ -75,6 +78,11 @@ public final class ScenarioStreamSession {
                 .takeUntilOther(reactor.core.publisher.Mono.delay(timeout)
                         .flatMap(ignored -> reactor.core.publisher.Mono.error(
                                 new java.util.concurrent.TimeoutException("Model generation timed out"))))
+                .doOnNext(event -> {
+                    if (event.usage() != null) {
+                        observedUsage.set(event.usage());
+                    }
+                })
                 .mapNotNull(AiStreamEvent::text);
     }
 
@@ -83,6 +91,11 @@ public final class ScenarioStreamSession {
         if (!finished.compareAndSet(false, true)) return;
         recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_SUCCEEDED, null,
                 elapsedMillis(), requestChars, fullTextChars,
+                observedUsage.get() == null ? null : observedUsage.get().inputTokens(),
+                observedUsage.get() == null ? null : observedUsage.get().outputTokens(),
+                AiCallAuditRecorder.cost(resolvedRoute.primary(),
+                        observedUsage.get() == null ? null : observedUsage.get().inputTokens(),
+                        observedUsage.get() == null ? null : observedUsage.get().outputTokens()),
                 resolvedRoute.primary().connectionId(), false);
     }
 
@@ -90,8 +103,15 @@ public final class ScenarioStreamSession {
     public ApiException fail(RuntimeException failure, int partialChars) {
         ApiException mapped = AiCallFailures.toApiException(scenario.label(), failure);
         if (!finished.compareAndSet(false, true)) return mapped;
+        // 失败也要记账：上游可能已经处理了部分 token（usage 已上报），照实记录；
+        // 没上报就是 null，不编一个数出来。
+        com.orbitworkbench.ai.application.AiUsage observed = observedUsage.get();
+        Integer inputTokens = observed == null ? null : observed.inputTokens();
+        Integer outputTokens = observed == null ? null : observed.outputTokens();
         recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_FAILED,
                 mapped.getErrorCode().name(), elapsedMillis(), requestChars, partialChars,
+                inputTokens, outputTokens,
+                AiCallAuditRecorder.cost(resolvedRoute.primary(), inputTokens, outputTokens),
                 resolvedRoute.primary().connectionId(), false);
         return mapped;
     }

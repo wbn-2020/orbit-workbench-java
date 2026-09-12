@@ -146,9 +146,17 @@ public class InterviewQuestionService {
         int turnNo = expectedTurnCount + 1;
         ServerSentEvent<String> startEvent = sse("start", "{\"turnNo\":" + turnNo
                 + ",\"type\":\"" + turnType + "\"}");
+        // usage 由适配器在流尾上报；留最后一次，供审计与费用账本落库
+        java.util.concurrent.atomic.AtomicReference<com.orbitworkbench.ai.application.AiUsage> usage =
+                new java.util.concurrent.atomic.AtomicReference<>();
         Flux<ServerSentEvent<String>> body = modelGateway
                 .stream(new AiInvocation(route.primary(), pair.system(), pair.user(),
                         null, null, true, MAX_OUTPUT_TOKENS).withWebSearch(webSearch.effective()))
+                .doOnNext(event -> {
+                    if (event.usage() != null) {
+                        usage.set(event.usage());
+                    }
+                })
                 .mapNotNull(AiStreamEvent::text)
                 .map(text -> {
                     buffer.append(text);
@@ -160,14 +168,20 @@ public class InterviewQuestionService {
                 aiCallAuditRecorder.finish(auditId, userId, AiScenario.INTERVIEW_QUESTION,
                         AiCallAuditRecorder.STATUS_FAILED,
                         ErrorCode.INVALID_STRUCTURED_OUTPUT.name(), elapsedMillis(start),
-                        requestChars, buffer.length(), route.primary().connectionId(), false);
+                        requestChars, buffer.length(),
+                        usageOf(usage), outputTokensOf(usage),
+                        AiCallAuditRecorder.cost(route.primary(), usageOf(usage), outputTokensOf(usage)),
+                        route.primary().connectionId(), false);
                 return Flux.just(sse("error", "面试出题未完成：模型未返回有效题目"));
             }
             InterviewTurnRecord turn = turnWriteService.append(userId, sessionId, turnType,
                     question, turnNo - 1);
             aiCallAuditRecorder.finish(auditId, userId, AiScenario.INTERVIEW_QUESTION,
                     AiCallAuditRecorder.STATUS_SUCCEEDED, null, elapsedMillis(start),
-                    requestChars, question.length(), route.primary().connectionId(), false);
+                    requestChars, question.length(),
+                    usageOf(usage), outputTokensOf(usage),
+                    AiCallAuditRecorder.cost(route.primary(), usageOf(usage), outputTokensOf(usage)),
+                    route.primary().connectionId(), false);
             String payload = "{\"turnId\":" + turn.getId() + ",\"turnNo\":" + turn.getTurnNo()
                     + ",\"question\":\"" + jsonEscape(question) + "\"}";
             return Flux.just(sse("done", payload));
@@ -179,9 +193,19 @@ public class InterviewQuestionService {
                     aiCallAuditRecorder.finish(auditId, userId, AiScenario.INTERVIEW_QUESTION,
                             AiCallAuditRecorder.STATUS_FAILED, mapped.getErrorCode().name(),
                             elapsedMillis(start), requestChars, buffer.length(),
+                            usageOf(usage), outputTokensOf(usage),
+                            AiCallAuditRecorder.cost(route.primary(), usageOf(usage), outputTokensOf(usage)),
                             route.primary().connectionId(), false);
                     return Flux.just(sse("error", mapped.getMessage()));
                 });
+    }
+
+    private static Integer usageOf(java.util.concurrent.atomic.AtomicReference<com.orbitworkbench.ai.application.AiUsage> ref) {
+        return ref.get() == null ? null : ref.get().inputTokens();
+    }
+
+    private static Integer outputTokensOf(java.util.concurrent.atomic.AtomicReference<com.orbitworkbench.ai.application.AiUsage> ref) {
+        return ref.get() == null ? null : ref.get().outputTokens();
     }
 
     private int elapsedMillis(long start) {

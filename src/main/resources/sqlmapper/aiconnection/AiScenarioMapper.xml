@@ -28,6 +28,9 @@
         <result property="latencyMs" column="latency_ms"/>
         <result property="requestChars" column="request_chars"/>
         <result property="responseChars" column="response_chars"/>
+        <result property="inputTokens" column="input_tokens"/>
+        <result property="outputTokens" column="output_tokens"/>
+        <result property="costAmount" column="cost_amount"/>
         <result property="configurationSnapshotJson" column="configuration_snapshot_json"/>
         <result property="createdAt" column="created_at"/>
         <result property="finishedAt" column="finished_at"/>
@@ -43,7 +46,8 @@
     <sql id="AuditColumns">
         a.id, a.user_id, a.scenario_code, a.primary_connection_id, a.used_connection_id,
         a.backup_attempted, a.status, a.error_code, a.latency_ms, a.request_chars,
-        a.response_chars, a.configuration_snapshot_json, a.created_at, a.finished_at,
+        a.response_chars, a.input_tokens, a.output_tokens, a.cost_amount,
+        a.configuration_snapshot_json, a.created_at, a.finished_at,
         c.name AS used_connection_name
     </sql>
 
@@ -112,11 +116,93 @@
             latency_ms = #{latencyMs},
             request_chars = #{requestChars},
             response_chars = #{responseChars},
+            input_tokens = #{inputTokens},
+            output_tokens = #{outputTokens},
+            cost_amount = #{costAmount},
             used_connection_id = #{usedConnectionId},
             backup_attempted = #{backupAttempted},
             finished_at = #{finishedAt}
         WHERE id = #{id} AND user_id = #{userId}
     </update>
+
+    <resultMap id="UsageRowMap" type="com.orbitworkbench.aiconnection.domain.UsageRow">
+        <result property="key" column="usage_key"/>
+        <result property="calls" column="calls"/>
+        <result property="succeeded" column="succeeded"/>
+        <result property="failed" column="failed"/>
+        <result property="inputTokens" column="input_tokens"/>
+        <result property="outputTokens" column="output_tokens"/>
+        <result property="costAmount" column="cost_amount"/>
+        <result property="unpricedCalls" column="unpriced_calls"/>
+    </resultMap>
+
+    <resultMap id="UsageSummaryMap" type="com.orbitworkbench.aiconnection.domain.UsageSummary">
+        <result property="calls" column="calls"/>
+        <result property="succeeded" column="succeeded"/>
+        <result property="failed" column="failed"/>
+        <result property="inputTokens" column="input_tokens"/>
+        <result property="outputTokens" column="output_tokens"/>
+        <result property="costAmount" column="cost_amount"/>
+        <result property="pricedCalls" column="priced_calls"/>
+        <result property="unpricedCalls" column="unpriced_calls"/>
+    </resultMap>
+
+    <!-- 分母口径：只统计真实发起过的调用；RUNNING 行还没结算，计入会让总量忽高忽低。
+         unpriced_calls 统计「有调用但 cost_amount 为 NULL」，界面据此提示金额覆盖范围。 -->
+    <sql id="UsageAggregate">
+        COUNT(*) AS calls,
+        SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END) AS succeeded,
+        SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed,
+        COALESCE(SUM(input_tokens), 0) AS input_tokens,
+        COALESCE(SUM(output_tokens), 0) AS output_tokens,
+        SUM(cost_amount) AS cost_amount,
+        SUM(CASE WHEN cost_amount IS NOT NULL THEN 1 ELSE 0 END) AS priced_calls,
+        SUM(CASE WHEN cost_amount IS NULL THEN 1 ELSE 0 END) AS unpriced_calls
+    </sql>
+
+    <select id="sumUsage" resultMap="UsageSummaryMap">
+        SELECT <include refid="UsageAggregate"/>
+        FROM ai_call_audit
+        WHERE user_id = #{userId}
+          AND status &lt;&gt; 'RUNNING'
+          AND created_at &gt;= #{from}
+    </select>
+
+    <select id="usageByDay" resultMap="UsageRowMap">
+        SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS usage_key,
+        <include refid="UsageAggregate"/>
+        FROM ai_call_audit
+        WHERE user_id = #{userId}
+          AND status &lt;&gt; 'RUNNING'
+          AND created_at &gt;= #{from}
+        GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
+        ORDER BY usage_key ASC
+    </select>
+
+    <select id="usageByScenario" resultMap="UsageRowMap">
+        SELECT scenario_code AS usage_key,
+        <include refid="UsageAggregate"/>
+        FROM ai_call_audit
+        WHERE user_id = #{userId}
+          AND status &lt;&gt; 'RUNNING'
+          AND created_at &gt;= #{from}
+        GROUP BY scenario_code
+        ORDER BY calls DESC, usage_key ASC
+    </select>
+
+    <!-- 模型名来自 model_profile（每连接一行）；连接已删或未配置模型时归到「未记录」，
+         不把这类调用藏起来，否则各模型之和会对不上总量。 -->
+    <select id="usageByModel" resultMap="UsageRowMap">
+        SELECT COALESCE(mp.model_name, '未记录') AS usage_key,
+        <include refid="UsageAggregate"/>
+        FROM ai_call_audit a
+        LEFT JOIN model_profile mp ON mp.connection_id = a.used_connection_id
+        WHERE a.user_id = #{userId}
+          AND a.status &lt;&gt; 'RUNNING'
+          AND a.created_at &gt;= #{from}
+        GROUP BY COALESCE(mp.model_name, '未记录')
+        ORDER BY calls DESC, usage_key ASC
+    </select>
 
     <select id="listAudits" resultMap="AuditMap">
         SELECT <include refid="AuditColumns"/>

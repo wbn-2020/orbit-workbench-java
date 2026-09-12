@@ -71,7 +71,7 @@ class AiScenarioExecutionServiceTest {
         assertEquals("参考答案", output);
         verify(recorder).finish(eq(55L), eq(7L), eq(AiScenario.KNOWLEDGE_ANSWER),
                 eq(AiCallAuditRecorder.STATUS_SUCCEEDED), isNull(), anyInt(), eq(10),
-                eq(4), eq(5L), eq(false));
+                eq(4), isNull(), isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test
@@ -89,7 +89,7 @@ class AiScenarioExecutionServiceTest {
                 "错误信息应保留原始错误码，实际：" + exception.getMessage());
         verify(recorder).finish(eq(55L), eq(7L), eq(AiScenario.INTERVIEW_QUESTION),
                 eq(AiCallAuditRecorder.STATUS_FAILED), eq("AUTHENTICATION_FAILED"),
-                anyInt(), anyInt(), anyInt(), eq(5L), eq(false));
+                anyInt(), anyInt(), anyInt(), isNull(), isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test
@@ -108,7 +108,7 @@ class AiScenarioExecutionServiceTest {
         verify(modelGateway, times(2)).stream(any(AiInvocation.class));
         verify(recorder).finish(eq(55L), eq(7L), eq(AiScenario.INTERVIEW_REPORT),
                 eq(AiCallAuditRecorder.STATUS_SUCCEEDED), isNull(), anyInt(), anyInt(),
-                anyInt(), eq(6L), eq(true));
+                anyInt(), isNull(), isNull(), isNull(), eq(6L), eq(true));
     }
 
     @Test
@@ -124,7 +124,7 @@ class AiScenarioExecutionServiceTest {
         verify(modelGateway, times(1)).stream(any(AiInvocation.class));
         verify(recorder).finish(eq(55L), eq(7L), eq(AiScenario.INTERVIEW_REPORT),
                 eq(AiCallAuditRecorder.STATUS_FAILED), eq("MODEL_NOT_FOUND"),
-                anyInt(), anyInt(), anyInt(), eq(5L), eq(false));
+                anyInt(), anyInt(), anyInt(), isNull(), isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test
@@ -156,7 +156,7 @@ class AiScenarioExecutionServiceTest {
         assertEquals(ErrorCode.STREAM_INTERRUPTED, exception.getErrorCode());
         verify(recorder).finish(eq(55L), eq(7L), eq(AiScenario.INTERVIEW_QUESTION),
                 eq(AiCallAuditRecorder.STATUS_FAILED), eq("STREAM_INTERRUPTED"),
-                anyInt(), anyInt(), anyInt(), eq(6L), eq(true));
+                anyInt(), anyInt(), anyInt(), isNull(), isNull(), isNull(), eq(6L), eq(true));
     }
 
     @Test
@@ -173,7 +173,7 @@ class AiScenarioExecutionServiceTest {
         verify(modelGateway, times(1)).stream(any(AiInvocation.class));
         verify(recorder).finish(eq(55L), eq(7L), eq(AiScenario.KNOWLEDGE_ANSWER),
                 eq(AiCallAuditRecorder.STATUS_FAILED), eq("INVALID_STRUCTURED_OUTPUT"),
-                anyInt(), anyInt(), eq(0), eq(5L), eq(false));
+                anyInt(), anyInt(), eq(0), isNull(), isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test
@@ -201,7 +201,7 @@ class AiScenarioExecutionServiceTest {
         assertEquals("仍然回答", output);
         verify(recorder).finish(isNull(), eq(7L), eq(AiScenario.KNOWLEDGE_ANSWER),
                 eq(AiCallAuditRecorder.STATUS_SUCCEEDED), isNull(), anyInt(), anyInt(),
-                anyInt(), eq(5L), eq(false));
+                anyInt(), isNull(), isNull(), isNull(), eq(5L), eq(false));
     }
 
     private void stubStreams(Flux<AiStreamEvent> single) {

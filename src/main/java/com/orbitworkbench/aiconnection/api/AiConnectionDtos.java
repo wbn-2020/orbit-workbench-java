@@ -22,7 +22,9 @@ public final class AiConnectionDtos {
             @Size(max = 512) String apiKey,
             @Min(1000) @Max(120000) Integer timeoutMs,
             Boolean enabled,
-            String webSearchDialect
+            String webSearchDialect,
+            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal inputPricePerMillion,
+            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal outputPricePerMillion
     ) {}
 
     public record UpdateConnectionRequest(
@@ -36,7 +38,9 @@ public final class AiConnectionDtos {
             @Size(max = 512) String apiKey,
             @Min(1000) @Max(120000) Integer timeoutMs,
             Boolean enabled,
-            String webSearchDialect
+            String webSearchDialect,
+            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal inputPricePerMillion,
+            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal outputPricePerMillion
     ) {}
 
     public record EnabledRequest(boolean enabled,
@@ -78,7 +82,9 @@ public final class AiConnectionDtos {
             Instant updatedAt,
             String webSearchDialect,
             boolean webSearchSupported,
-            boolean forcedSearchSupported
+            boolean forcedSearchSupported,
+            java.math.BigDecimal inputPricePerMillion,
+            java.math.BigDecimal outputPricePerMillion
     ) {
         public static ConnectionResponse from(AiConnectionRecord c) {
             ModelCapabilities capabilities = ModelCapabilities.parse(c.getCapabilitiesJson());
@@ -90,7 +96,8 @@ public final class AiConnectionDtos {
                     c.getLastTestedAt(), c.getLastErrorCode(), c.getLastErrorSummary(),
                     c.getCreatedAt(), c.getUpdatedAt(), capabilities.webSearchDialect().name(),
                     capabilities.webSearchDialect().supportsWebSearch(),
-                    capabilities.webSearchDialect().supportsForcedSearch());
+                    capabilities.webSearchDialect().supportsForcedSearch(),
+                    c.getInputPricePerMillion(), c.getOutputPricePerMillion());
         }
     }
 

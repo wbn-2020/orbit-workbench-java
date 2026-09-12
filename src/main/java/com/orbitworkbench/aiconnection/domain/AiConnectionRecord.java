@@ -16,6 +16,8 @@ public class AiConnectionRecord {
     private String credentialMasked;
     private boolean enabled;
     private int timeoutMs;
+    private java.math.BigDecimal inputPricePerMillion;
+    private java.math.BigDecimal outputPricePerMillion;
     private String lastTestStatus;
     private Instant lastTestedAt;
     private Integer lastTestLatencyMs;
@@ -58,6 +60,10 @@ public class AiConnectionRecord {
     public void setEnabled(boolean value) { this.enabled = value; }
     public int getTimeoutMs() { return timeoutMs; }
     public void setTimeoutMs(int value) { this.timeoutMs = value; }
+    public java.math.BigDecimal getInputPricePerMillion() { return inputPricePerMillion; }
+    public void setInputPricePerMillion(java.math.BigDecimal v) { this.inputPricePerMillion = v; }
+    public java.math.BigDecimal getOutputPricePerMillion() { return outputPricePerMillion; }
+    public void setOutputPricePerMillion(java.math.BigDecimal v) { this.outputPricePerMillion = v; }
     public String getLastTestStatus() { return lastTestStatus; }
     public void setLastTestStatus(String value) { this.lastTestStatus = value; }
     public Instant getLastTestedAt() { return lastTestedAt; }

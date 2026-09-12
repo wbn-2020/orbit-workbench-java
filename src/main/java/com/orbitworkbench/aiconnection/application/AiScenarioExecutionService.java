@@ -94,6 +94,8 @@ public class AiScenarioExecutionService {
         if (first.failure() == null) {
             recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_SUCCEEDED, null,
                     first.latencyMs(), requestChars, first.text().length(),
+                    first.inputTokens(), first.outputTokens(),
+                    AiCallAuditRecorder.cost(route.primary(), first.inputTokens(), first.outputTokens()),
                     route.primary().connectionId(), false);
             return first.text();
         }
@@ -109,17 +111,23 @@ public class AiScenarioExecutionService {
             if (second.failure() == null) {
                 recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_SUCCEEDED, null,
                         second.latencyMs(), requestChars, second.text().length(),
+                        second.inputTokens(), second.outputTokens(),
+                        AiCallAuditRecorder.cost(route.backup(), second.inputTokens(), second.outputTokens()),
                         route.backup().connectionId(), true);
                 return second.text();
             }
             recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_FAILED,
                     second.errorCode().name(), second.latencyMs(), requestChars,
-                    second.partialChars(), route.backup().connectionId(), true);
+                    second.partialChars(), second.inputTokens(), second.outputTokens(),
+                    AiCallAuditRecorder.cost(route.backup(), second.inputTokens(), second.outputTokens()),
+                    route.backup().connectionId(), true);
             throw second.failure();
         }
 
         recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_FAILED,
                 first.errorCode().name(), first.latencyMs(), requestChars, first.partialChars(),
+                first.inputTokens(), first.outputTokens(),
+                AiCallAuditRecorder.cost(route.primary(), first.inputTokens(), first.outputTokens()),
                 route.primary().connectionId(), false);
         throw first.failure();
     }
@@ -128,12 +136,18 @@ public class AiScenarioExecutionService {
                             String systemPrompt, String userPrompt, int maxOutputTokens,
                             Duration timeout, long start, WebSearchMode webSearch) {
         StringBuilder text = new StringBuilder();
+        // usage 由适配器在流尾以 usage.updated / run.completed 事件上报；留最后一个（累计值最全）。
+        java.util.concurrent.atomic.AtomicReference<com.orbitworkbench.ai.application.AiUsage> usage =
+                new java.util.concurrent.atomic.AtomicReference<>();
         try {
             modelGateway.stream(new AiInvocation(connection, systemPrompt, userPrompt,
                             null, null, true, maxOutputTokens).withWebSearch(webSearch))
                     .doOnNext(event -> {
                         if (event.text() != null) {
                             text.append(event.text());
+                        }
+                        if (event.usage() != null) {
+                            usage.set(event.usage());
                         }
                     })
                     .blockLast(timeout);
@@ -146,7 +160,10 @@ public class AiScenarioExecutionService {
                     ErrorCode.INVALID_STRUCTURED_OUTPUT, scenario.label() + "未返回任何内容");
             return Attempt.failed(blank.getErrorCode(), blank, 0, elapsedMillis(start));
         }
-        return Attempt.succeeded(text.toString(), elapsedMillis(start));
+        com.orbitworkbench.ai.application.AiUsage observed = usage.get();
+        return Attempt.succeeded(text.toString(), elapsedMillis(start),
+                observed == null ? null : observed.inputTokens(),
+                observed == null ? null : observed.outputTokens());
     }
 
     /**
@@ -165,14 +182,15 @@ public class AiScenarioExecutionService {
     }
 
     private record Attempt(String text, int partialChars, int latencyMs,
-                           ErrorCode errorCode, ApiException failure) {
+                           ErrorCode errorCode, ApiException failure,
+                           Integer inputTokens, Integer outputTokens) {
 
-        static Attempt succeeded(String text, int latencyMs) {
-            return new Attempt(text, text.length(), latencyMs, null, null);
+        static Attempt succeeded(String text, int latencyMs, Integer inputTokens, Integer outputTokens) {
+            return new Attempt(text, text.length(), latencyMs, null, null, inputTokens, outputTokens);
         }
 
         static Attempt failed(ErrorCode errorCode, ApiException failure, int partialChars, int latencyMs) {
-            return new Attempt(null, partialChars, latencyMs, errorCode, failure);
+            return new Attempt(null, partialChars, latencyMs, errorCode, failure, null, null);
         }
     }
 }

@@ -30,4 +30,7 @@ public interface AiConnectionMapper {
                           @Param("errorCode") String errorCode,
                           @Param("errorSummary") String errorSummary);
     void insertTestRecord(ConnectionTestRecord record);
+
+    /** 是否至少有一条在用连接配过单价（连接表全局共享，不分用户）。 */
+    long countWithPricing();
 }

@@ -35,9 +35,32 @@ public interface AiScenarioMapper {
             @Param("latencyMs") Integer latencyMs,
             @Param("requestChars") Integer requestChars,
             @Param("responseChars") Integer responseChars,
+            @Param("inputTokens") Integer inputTokens,
+            @Param("outputTokens") Integer outputTokens,
+            @Param("costAmount") java.math.BigDecimal costAmount,
             @Param("usedConnectionId") Long usedConnectionId,
             @Param("backupAttempted") boolean backupAttempted,
             @Param("finishedAt") Instant finishedAt);
+
+    /** 时间窗内的总量：调用数、成功/失败、token 合计、已计价金额、未计价调用数。 */
+    com.orbitworkbench.aiconnection.domain.UsageSummary sumUsage(
+            @Param("userId") Long userId,
+            @Param("from") java.time.Instant from);
+
+    /** 按日分组（DATE(created_at)），升序。 */
+    List<com.orbitworkbench.aiconnection.domain.UsageRow> usageByDay(
+            @Param("userId") Long userId,
+            @Param("from") java.time.Instant from);
+
+    /** 按场景分组，调用数降序。 */
+    List<com.orbitworkbench.aiconnection.domain.UsageRow> usageByScenario(
+            @Param("userId") Long userId,
+            @Param("from") java.time.Instant from);
+
+    /** 按模型分组（model_profile 每连接一行），调用数降序。 */
+    List<com.orbitworkbench.aiconnection.domain.UsageRow> usageByModel(
+            @Param("userId") Long userId,
+            @Param("from") java.time.Instant from);
 
     List<CallAuditRecord> listAudits(
             @Param("userId") Long userId,

@@ -16,6 +16,8 @@
         <result property="credentialMasked" column="credential_masked"/>
         <result property="enabled" column="enabled"/>
         <result property="timeoutMs" column="timeout_ms"/>
+        <result property="inputPricePerMillion" column="input_price_per_million"/>
+        <result property="outputPricePerMillion" column="output_price_per_million"/>
         <result property="lastTestStatus" column="last_test_status"/>
         <result property="lastTestedAt" column="last_tested_at"/>
         <result property="lastTestLatencyMs" column="last_test_latency_ms"/>
@@ -36,7 +38,8 @@
         c.id, c.provider_catalog_id, p.provider_code AS provider_type, c.name,
         c.base_url, c.endpoint_path, c.protocol, c.credential_ciphertext,
         c.credential_iv, c.credential_key_version, c.credential_masked, c.enabled,
-        c.timeout_ms, c.last_test_status, c.last_tested_at, c.last_test_latency_ms,
+        c.timeout_ms, c.input_price_per_million, c.output_price_per_million,
+        c.last_test_status, c.last_tested_at, c.last_test_latency_ms,
         c.last_error_code, c.last_error_summary, c.configuration_version,
         c.deleted_at, c.created_at, c.updated_at,
         mp.id AS model_profile_id, mp.model_name, mp.display_name AS model_display_name,
@@ -50,10 +53,12 @@
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_connection(provider_catalog_id, name, base_url, endpoint_path, protocol,
           credential_ciphertext, credential_iv, credential_key_version, credential_masked,
-          enabled, timeout_ms, last_test_status, created_at, updated_at)
+          enabled, timeout_ms, input_price_per_million, output_price_per_million,
+          last_test_status, created_at, updated_at)
         VALUES(#{providerCatalogId}, #{name}, #{baseUrl}, #{endpointPath}, #{protocol},
           #{credentialCiphertext}, #{credentialIv}, #{credentialKeyVersion}, #{credentialMasked},
-          #{enabled}, #{timeoutMs}, #{lastTestStatus}, #{createdAt}, #{updatedAt})
+          #{enabled}, #{timeoutMs}, #{inputPricePerMillion}, #{outputPricePerMillion},
+          #{lastTestStatus}, #{createdAt}, #{updatedAt})
     </insert>
     <insert id="insertModelProfile" parameterType="com.orbitworkbench.aiconnection.domain.AiConnectionRecord"
             useGeneratedKeys="true" keyProperty="modelProfileId">
@@ -101,6 +106,8 @@
             </if>
             enabled = #{enabled},
             timeout_ms = #{timeoutMs},
+            input_price_per_million = #{inputPricePerMillion},
+            output_price_per_million = #{outputPricePerMillion},
             last_test_status = #{lastTestStatus},
             configuration_version = configuration_version + 1,
             updated_at = #{updatedAt}
@@ -152,4 +159,12 @@
           #{httpStatus}, #{latencyMs}, #{eventCount}, #{doneMarkerReceived},
           #{errorCode}, #{errorSummary}, #{capabilitiesJson}, #{configurationVersion}, #{testedAt})
     </insert>
+
+    <select id="countWithPricing" resultType="long">
+        SELECT COUNT(*)
+        FROM ai_connection
+        WHERE deleted_at IS NULL
+          AND (input_price_per_million IS NOT NULL OR output_price_per_million IS NOT NULL)
+    </select>
+
 </mapper>

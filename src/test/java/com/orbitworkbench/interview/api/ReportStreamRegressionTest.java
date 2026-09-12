@@ -17,6 +17,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import reactor.core.publisher.Flux;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.isNull;
 import static org.mockito.Mockito.*;
 
 class ReportStreamRegressionTest {
@@ -55,7 +56,7 @@ class ReportStreamRegressionTest {
         order.verify(gateway).stream(any());
         order.verify(reports).finalizeStreamedReport(interview, "report");
         order.verify(audit).finish(eq(77L), eq(7L), any(), eq("SUCCEEDED"), isNull(),
-                anyInt(), anyInt(), eq(6), eq(5L), eq(false));
+                anyInt(), anyInt(), eq(6), isNull(), isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test
@@ -77,7 +78,7 @@ class ReportStreamRegressionTest {
         verify(reports).markFailedAndNotifyForStream(eq(interview), any());
         verify(reports, never()).finalizeStreamedReport(any(), any());
         verify(audit).finish(eq(77L), eq(7L), any(), eq("FAILED"), any(),
-                anyInt(), anyInt(), eq(7), eq(5L), eq(false));
+                anyInt(), anyInt(), eq(7), isNull(), isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test

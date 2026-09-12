@@ -68,13 +68,28 @@ public class AiCallAuditRecorder {
     public void finish(Long auditId, Long userId, AiScenario scenario, String status, String errorCode,
                        int latencyMs, int requestChars, int responseChars, Long usedConnectionId,
                        boolean backupAttempted) {
+        finish(auditId, userId, scenario, status, errorCode, latencyMs, requestChars, responseChars,
+                null, null, null, usedConnectionId, backupAttempted);
+    }
+
+    /**
+     * 带用量与成本的收尾。三个值都允许 null——供应商没报 token 就说不知道，
+     * 不用 0 冒充「这次没花钱」（同 audit 表三列可空的设计口径）。
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void finish(Long auditId, Long userId, AiScenario scenario, String status, String errorCode,
+                       int latencyMs, int requestChars, int responseChars,
+                       Integer inputTokens, Integer outputTokens, java.math.BigDecimal costAmount,
+                       Long usedConnectionId, boolean backupAttempted) {
         if (auditId == null) {
             return;
         }
         try {
             mapper.finishAudit(auditId, userId, status, truncate(errorCode, MAX_ERROR_CODE_LENGTH),
                     Math.max(0, latencyMs), Math.max(0, requestChars), Math.max(0, responseChars),
-                    usedConnectionId, backupAttempted, Instant.now());
+                    inputTokens == null ? null : Math.max(0, inputTokens),
+                    outputTokens == null ? null : Math.max(0, outputTokens),
+                    costAmount, usedConnectionId, backupAttempted, Instant.now());
         } catch (RuntimeException exception) {
             log.warn("写入 AI 调用审计失败（结束），scenario={} userId={} auditId={}",
                     scenario, userId, auditId, exception);
@@ -118,6 +133,34 @@ public class AiCallAuditRecorder {
         }
     }
 
+    /**
+     * 成本 = 输入 token × 输入单价 + 输出 token × 输出单价（单位：每百万 token）。
+     * 单价缺失或 token 缺失都返回 null——算不出就是算不出，不返回 0 冒充免费。
+     */
+    public static java.math.BigDecimal cost(AiConnectionRuntimeConfig connection,
+                                            Integer inputTokens, Integer outputTokens) {
+        if (connection == null || (inputTokens == null && outputTokens == null)) {
+            return null;
+        }
+        java.math.BigDecimal inputPrice = connection.inputPricePerMillion();
+        java.math.BigDecimal outputPrice = connection.outputPricePerMillion();
+        if (inputPrice == null && outputPrice == null) {
+            return null;
+        }
+        java.math.BigDecimal million = java.math.BigDecimal.valueOf(1_000_000L);
+        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+        boolean any = false;
+        if (inputTokens != null && inputPrice != null) {
+            total = total.add(inputPrice.multiply(java.math.BigDecimal.valueOf(inputTokens)));
+            any = true;
+        }
+        if (outputTokens != null && outputPrice != null) {
+            total = total.add(outputPrice.multiply(java.math.BigDecimal.valueOf(outputTokens)));
+            any = true;
+        }
+        return any ? total.divide(million, 6, java.math.RoundingMode.HALF_UP) : null;
+    }
+
     private Map<String, Object> connectionSummary(AiConnectionRuntimeConfig connection) {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("connectionId", connection.connectionId());
@@ -125,6 +168,10 @@ public class AiCallAuditRecorder {
         summary.put("protocol", connection.protocol());
         summary.put("model", connection.modelName());
         summary.put("timeoutMs", connection.timeoutMs());
+        if (connection.inputPricePerMillion() != null || connection.outputPricePerMillion() != null) {
+            summary.put("pricePerMillionIn", connection.inputPricePerMillion());
+            summary.put("pricePerMillionOut", connection.outputPricePerMillion());
+        }
         return summary;
     }
 
