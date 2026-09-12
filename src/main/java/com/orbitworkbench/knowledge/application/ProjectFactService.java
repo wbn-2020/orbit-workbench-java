@@ -3,6 +3,7 @@ package com.orbitworkbench.knowledge.application;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.ai.application.AiOutputCleaner;
+import com.orbitworkbench.ai.application.PromptCatalog;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.ConfirmFactRequest;
@@ -44,14 +45,8 @@ public class ProjectFactService {
     private static final Set<String> FACT_TYPES = Set.of(
             "BUSINESS", "STRUCTURE", "RISK", "RESPONSIBILITY", "TECH_STACK", "OTHER");
 
-    private static final String SYSTEM_PROMPT = """
-            你是项目画像分析师。根据给定的项目文件片段，提取 3 到 8 条画像事实，覆盖：
-            业务背景(BUSINESS)、结构(STRUCTURE)、风险点(RISK)、用户可能负责的部分(RESPONSIBILITY)、
-            技术栈(TECH_STACK)。每条事实给出 confidence 0-100（对该判断的把握）。
-            只输出一个 JSON 数组，不要其他文字，元素结构：
-            {"factType":"BUSINESS|STRUCTURE|RISK|RESPONSIBILITY|TECH_STACK|OTHER",
-             "title":"不超过 40 字的标题","content":"不超过 300 字的事实描述","confidence":0-100}
-            系统推断的事实不得表述为用户亲自负责；RESONSIBILITY 类需写“疑似/可能”。""";
+    /** 正文见 resources/prompts/project-fact-system.txt。 */
+    private static final String SYSTEM_PROMPT = PromptCatalog.load("project-fact-system");
 
     private final ProjectMapper projectMapper;
     private final ProjectFactMapper factMapper;

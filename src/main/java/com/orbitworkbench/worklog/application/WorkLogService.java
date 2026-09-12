@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
 import com.orbitworkbench.ai.application.AiOutputCleaner;
+import com.orbitworkbench.ai.application.PromptCatalog;
 import com.orbitworkbench.ai.application.RequestRejectedException;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
@@ -42,9 +43,8 @@ public class WorkLogService {
     /** 卡片摘要落库上限：summary 列为 TEXT，此处限 2000 字防模型跑飞。 */
     private static final int CARD_SUMMARY_MAX = 2000;
     private static final Duration DISTILL_TIMEOUT = Duration.ofSeconds(60);
-    private static final String DISTILL_SYSTEM_PROMPT = "你是一名资深工程师的笔记整理助手。"
-            + "请把用户提供的工作记录蒸馏成一条可复用知识卡片：用一两句话给出要点摘要，"
-            + "并提取 2 到 4 个精炼标签。只返回 JSON，格式：{\"summary\":\"...\",\"tags\":[\"...\",\"...\"]}。";
+    /** 正文见 resources/prompts/worklog-distill-system.txt。 */
+    private static final String DISTILL_SYSTEM_PROMPT = PromptCatalog.load("worklog-distill-system");
 
     private static final Map<String, WorkLogCategory> CATEGORY_ALIASES = Map.of(
             "project", WorkLogCategory.PROJECT,

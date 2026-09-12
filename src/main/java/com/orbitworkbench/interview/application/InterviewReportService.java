@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.ai.application.AiErrorSanitizer;
 import com.orbitworkbench.ai.application.AiOutputCleaner;
+import com.orbitworkbench.ai.application.PromptCatalog;
 import com.orbitworkbench.ai.application.RequestRejectedException;
 import com.orbitworkbench.ai.application.WebSearchMode;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
@@ -57,26 +58,8 @@ public class InterviewReportService {
     private static final int MAX_LIST_ITEMS = 20;
     private static final int MAX_LIST_ITEM_CHARS = 300;
 
-    private static final String SYSTEM_PROMPT = """
-            你是一名严格的 Java 后端面试评估官。根据给定的面试配置与完整问答记录输出评分报告。
-            评分维度固定为 11 项：业务理解、技术正确性、原理理解、实现深度、项目实践能力、
-            问题分析、方案完整性、架构取舍、排障与异常恢复、表达结构、边界意识。每项 0-100。
-            录用建议只能是：STRONG_PASS、PASS、HOLD、FAIL 之一。
-            评估要点：技术正确性、回答深度、与追问的对抗表现、回答来源（INDEPENDENT 高于 PROMPTED，
-            AI_ASSISTED/AI_GENERATED 需在评语中降低独立性评价）。
-            只输出一个 JSON 对象，不要输出任何其他文字或代码围栏，结构如下：
-            {"totalScore":整数0-100,
-             "hiringRecommendation":"STRONG_PASS|PASS|HOLD|FAIL",
-             "dimensionScores":{"业务理解":0-100,"技术正确性":0-100,"原理理解":0-100,"实现深度":0-100,
-               "项目实践能力":0-100,"问题分析":0-100,"方案完整性":0-100,"架构取舍":0-100,
-               "排障与异常恢复":0-100,"表达结构":0-100,"边界意识":0-100},
-             "strengths":["做得好的地方"],
-             "weaknesses":["薄弱点"],
-             "followUpFindings":["追问暴露的问题"],
-             "projectMastery":["项目掌握薄弱点"],
-             "knowledgeGaps":["技术知识薄弱点"],
-             "studySuggestions":["建议的复习任务，每条一句话可执行"]}
-            """;
+    /** 正文见 resources/prompts/interview-report-system.txt，字节级参与 SCORING_RULE_VERSION 哈希。 */
+    private static final String SYSTEM_PROMPT = PromptCatalog.load("interview-report-system");
 
     /**
      * 评分规则版本（14 §4）：哈希材料是「这份报告怎么被打出来」的全部内容——评分提示词、

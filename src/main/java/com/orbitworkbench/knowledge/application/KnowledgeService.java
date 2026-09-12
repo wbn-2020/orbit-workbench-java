@@ -2,6 +2,7 @@ package com.orbitworkbench.knowledge.application;
 
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
+import com.orbitworkbench.ai.application.PromptCatalog;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.AskResponse;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.BuildResultResponse;
 import com.orbitworkbench.knowledge.api.KnowledgeDtos.SourceItem;
@@ -38,10 +39,8 @@ public class KnowledgeService {
     private static final int ANSWER_MAX_TOKENS = 2048;
     private static final Duration ANSWER_TIMEOUT = Duration.ofSeconds(120);
     private static final int SOURCE_SNIPPET = 300;
-    private static final String ANSWER_SYSTEM_PROMPT = """
-            你是求职者的项目资料助手。只依据给定资料回答问题；回答中引用资料时标注编号（如 [1]）。
-            如果资料不足以回答，请第一句明确写“资料中未找到足够依据”，再给出与问题相关的通用建议。
-            用简洁的中文回答。""";
+    /** 正文见 resources/prompts/knowledge-answer-system.txt。 */
+    private static final String ANSWER_SYSTEM_PROMPT = PromptCatalog.load("knowledge-answer-system");
 
     private final ProjectMapper projectMapper;
     private final KnowledgeChunkMapper chunkMapper;
