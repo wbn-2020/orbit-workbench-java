@@ -3,6 +3,7 @@ package com.orbitworkbench.workbench.application;
 import com.orbitworkbench.workbench.api.WorkbenchDtos.AgendaItem;
 import com.orbitworkbench.workbench.api.WorkbenchDtos.AssetCount;
 import com.orbitworkbench.workbench.api.WorkbenchDtos.ModeCard;
+import com.orbitworkbench.workbench.api.WorkbenchDtos.PipelineCheck;
 import com.orbitworkbench.workbench.api.WorkbenchDtos.WorkbenchSummaryResponse;
 import com.orbitworkbench.workbench.domain.WorkbenchLastEvaluation;
 import com.orbitworkbench.workbench.infrastructure.mapper.WorkbenchMapper;
@@ -32,6 +33,8 @@ public class WorkbenchService {
 
     /** 首页只展示最近若干条待办，避免长列表把首页压成一屏滚动。 */
     private static final int AGENDA_MAX_ITEMS = 8;
+    /** 上次出分面试超过该天数即提示再做一次市场感知（v2 定位：周期性机制）。 */
+    private static final int STALE_INTERVIEW_DAYS = 30;
     private static final DateTimeFormatter AGENDA_TIME = DateTimeFormatter.ofPattern("HH:mm");
 
     private final WorkbenchMapper mapper;
@@ -91,7 +94,78 @@ public class WorkbenchService {
         Instant end = today.plusDays(1).atStartOfDay(zone).toInstant();
         int focusToday = (int) mapper.focusMinutesToday(userId, start, end);
 
-        return new WorkbenchSummaryResponse(greeting, modes, assets, agenda(userId, zone, start, end), focusToday);
+        return new WorkbenchSummaryResponse(greeting, modes, assets, agenda(userId, zone, start, end),
+                focusToday, pipeline(userId, now, today, pendingDistill, activeGoals));
+    }
+
+    /**
+     * 成长管线体检（借鉴 EvoFlow 运营洞察）：按主链顺序逐项检查
+     * 「AI 账户 → 项目资料 → 面试校准 → 沉淀 → 复习 → 记忆确认」，
+     * 每项只报可数的真实数字，全部通过时返回空列表，界面显示「管线健康」。
+     */
+    private List<PipelineCheck> pipeline(Long userId, Instant now, LocalDate today,
+                                         long pendingDistill, long activeGoals) {
+        List<PipelineCheck> checks = new ArrayList<>();
+
+        if (mapper.countEnabledConnections() == 0) {
+            checks.add(new PipelineCheck("connection", "BLOCK", "还没有可用的 AI 账户",
+                    "面试出题、报告与蒸馏都需要至少一个已启用的连接。",
+                    "/settings/ai-connections", "去配置"));
+        }
+        if (mapper.countProjects(userId) == 0) {
+            checks.add(new PipelineCheck("project", "BLOCK", "还没有导入过项目资料",
+                    "面试与知识库的出题依据来自你的项目版本，导入后 AI 才能建立可追溯的画像。",
+                    "/projects", "去导入"));
+        }
+
+        long readyReports = mapper.countReadyReports(userId);
+        if (readyReports == 0) {
+            checks.add(new PipelineCheck("interview", "ACTION", "还没完成过出分的模拟面试",
+                    "一场面试就能校准市场位置并生成 11 维报告与复习任务。",
+                    "/interviews/new", "开始面试"));
+        } else {
+            Instant lastEnded = mapper.lastInterviewEndedAt(userId);
+            if (lastEnded != null
+                    && java.time.Duration.between(lastEnded, now).toDays() >= STALE_INTERVIEW_DAYS) {
+                checks.add(new PipelineCheck("interview-cadence", "STALE",
+                        "上一场面试已过 " + java.time.Duration.between(lastEnded, now).toDays() + " 天",
+                        "市场在变，建议每月做一次周期性感知与能力校准。",
+                        "/interviews/new", "再测一次"));
+            }
+        }
+
+        long failedReports = mapper.countFailedReports(userId);
+        if (failedReports > 0) {
+            checks.add(new PipelineCheck("report-retry", "ACTION",
+                    failedReports + " 份报告生成失败待重试",
+                    "失败原因已记录在报告中心，可换账户或修正配置后重跑。",
+                    "/reports", "去处理"));
+        }
+        if (pendingDistill > 0) {
+            checks.add(new PipelineCheck("distill", "ACTION",
+                    pendingDistill + " 条工作记录还没蒸馏成知识卡片",
+                    "经验不蒸馏就会随项目流失，蒸馏只要一次点击。",
+                    "/work-sedimentation", "去蒸馏"));
+        }
+        long dueCards = mapper.countDueCards(userId, today);
+        if (dueCards > 0) {
+            checks.add(new PipelineCheck("review", "ACTION", dueCards + " 张知识卡片今日到复习期",
+                    "按间隔复习节奏到期，过一遍记得更牢。",
+                    "/knowledge", "去复习"));
+        }
+        long pendingFacts = mapper.countPendingUserFacts(userId);
+        if (pendingFacts > 0) {
+            checks.add(new PipelineCheck("memory", "ACTION",
+                    pendingFacts + " 条画像建议待确认",
+                    "确认后才会注入面试与问答上下文，忽略会归档留痕。",
+                    "/profile/job", "去确认"));
+        }
+        if (activeGoals == 0 && readyReports > 0) {
+            checks.add(new PipelineCheck("goal", "ACTION", "报告指出了缺口，但还没有进行中的学习目标",
+                    "把技能缺口转成目标与复习计划，形成「感知 → 学习」闭环。",
+                    "/learning-update", "立目标"));
+        }
+        return List.copyOf(checks);
     }
 
     /** 复用 schedule 模块的只读 agenda：日程 / 面试 / 复习任务 / 投递跟进，按开始时间排序。 */

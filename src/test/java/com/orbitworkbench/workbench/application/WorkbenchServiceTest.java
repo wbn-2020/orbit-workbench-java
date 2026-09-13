@@ -1,6 +1,7 @@
 package com.orbitworkbench.workbench.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -111,5 +112,53 @@ class WorkbenchServiceTest {
         assertEquals("全天", summary.agenda().get(1).time());
         assertEquals(true, summary.agenda().get(1).done());
         assertEquals("10:00", summary.agenda().get(2).time());
+    }
+
+    @Test
+    void pipelineBlocksBlockFirstThenActionsAndStale() {
+        ZoneId utc = ZoneId.of("UTC");
+        when(preferenceService.timezone(1L)).thenReturn(utc);
+        when(mapper.countEnabledConnections()).thenReturn(0L); // BLOCK：无可用账户
+        when(mapper.countProjects(1L)).thenReturn(3L);
+        when(mapper.countReadyReports(1L)).thenReturn(2L);
+        // 上一场面试 40 天前：STALE
+        when(mapper.lastInterviewEndedAt(1L)).thenReturn(Instant.parse("2026-08-04T09:00:00Z"));
+        when(mapper.countFailedReports(1L)).thenReturn(1L); // ACTION
+        when(mapper.countPendingDistill(1L)).thenReturn(2L); // ACTION
+        when(mapper.countDueCards(eq(1L), any())).thenReturn(0L);
+        when(mapper.countPendingUserFacts(1L)).thenReturn(1L); // ACTION
+        when(mapper.countActiveGoals(1L)).thenReturn(1L);
+
+        WorkbenchService service = new WorkbenchService(
+                mapper, scheduleService, preferenceService, Clock.fixed(Instant.parse("2026-09-13T09:00:00Z"), utc));
+
+        var pipeline = service.summary(1L).pipeline();
+
+        assertEquals("connection", pipeline.get(0).key());
+        assertEquals("BLOCK", pipeline.get(0).status());
+        assertEquals(java.util.List.of("report-retry", "distill", "memory"),
+                pipeline.subList(1, 4).stream().map(r -> r.key()).toList());
+        assertEquals("STALE", pipeline.get(4).status());
+        assertEquals("interview-cadence", pipeline.get(4).key());
+    }
+
+    @Test
+    void pipelineEmptyWhenChainHealthy() {
+        ZoneId utc = ZoneId.of("UTC");
+        when(preferenceService.timezone(1L)).thenReturn(utc);
+        when(mapper.countEnabledConnections()).thenReturn(1L);
+        when(mapper.countProjects(1L)).thenReturn(2L);
+        when(mapper.countReadyReports(1L)).thenReturn(3L);
+        when(mapper.lastInterviewEndedAt(1L)).thenReturn(Instant.parse("2026-09-10T09:00:00Z"));
+        when(mapper.countFailedReports(1L)).thenReturn(0L);
+        when(mapper.countPendingDistill(1L)).thenReturn(0L);
+        when(mapper.countDueCards(eq(1L), any())).thenReturn(0L);
+        when(mapper.countPendingUserFacts(1L)).thenReturn(0L);
+        when(mapper.countActiveGoals(1L)).thenReturn(1L);
+
+        WorkbenchService service = new WorkbenchService(
+                mapper, scheduleService, preferenceService, Clock.fixed(Instant.parse("2026-09-13T09:00:00Z"), utc));
+
+        assertEquals(java.util.List.of(), service.summary(1L).pipeline());
     }
 }

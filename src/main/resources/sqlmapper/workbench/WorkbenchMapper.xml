@@ -50,4 +50,46 @@
         ORDER BY r.id DESC
         LIMIT 1
     </select>
+
+    <!-- 管线体检只读统计。ai_connection 是全局资产（V2 无 user_id 列），按启用数计。 -->
+    <select id="countEnabledConnections" resultType="long">
+        SELECT COUNT(*) FROM ai_connection WHERE enabled = 1
+    </select>
+
+    <select id="countProjects" resultType="long">
+        SELECT COUNT(*) FROM project WHERE user_id = #{userId}
+    </select>
+
+    <select id="countReadyReports" resultType="long">
+        SELECT COUNT(*)
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE s.user_id = #{userId} AND r.status = 'REPORT_READY'
+    </select>
+
+    <select id="countFailedReports" resultType="long">
+        SELECT COUNT(*)
+        FROM interview_report r
+        JOIN interview_session s ON s.id = r.session_id
+        WHERE s.user_id = #{userId} AND r.status = 'REPORT_FAILED'
+    </select>
+
+    <select id="lastInterviewEndedAt" resultType="java.time.Instant">
+        SELECT MAX(ended_at)
+        FROM interview_session
+        WHERE user_id = #{userId} AND status = 'COMPLETED'
+    </select>
+
+    <select id="countDueCards" resultType="long">
+        SELECT COUNT(*)
+        FROM knowledge_card
+        WHERE user_id = #{userId}
+          AND next_review_date IS NOT NULL AND next_review_date &lt;= #{date}
+    </select>
+
+    <select id="countPendingUserFacts" resultType="long">
+        SELECT COUNT(*)
+        FROM user_fact
+        WHERE user_id = #{userId} AND confirmation_status = 'ANALYZED'
+    </select>
 </mapper>
