@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.workbench.infrastructure.mapper.ReflectionMapper">
+
+    <!-- 复盘聚合全部只读；[start,end) 半开区间由调用方按用户时区计算好传入。 -->
+
+    <resultMap id="WorkRowMap" type="com.orbitworkbench.workbench.domain.WorkMetricRow">
+        <result property="id" column="id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="category" column="category"/>
+        <result property="distilled" column="distilled"/>
+    </resultMap>
+
+    <select id="listWorkLogs" resultMap="WorkRowMap">
+        SELECT id, created_at, category, distilled
+        FROM work_log
+        WHERE user_id = #{userId}
+          AND created_at &gt;= #{start} AND created_at &lt; #{end}
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <resultMap id="KnowledgeRowMap" type="com.orbitworkbench.workbench.domain.KnowledgeMetricRow">
+        <result property="id" column="id"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="listKnowledgeCards" resultMap="KnowledgeRowMap">
+        SELECT id, created_at
+        FROM knowledge_card
+        WHERE user_id = #{userId}
+          AND created_at &gt;= #{start} AND created_at &lt; #{end}
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <resultMap id="FocusRowMap" type="com.orbitworkbench.workbench.domain.FocusMetricRow">
+        <result property="id" column="id"/>
+        <result property="createdAt" column="started_at"/>
+        <result property="durationMinutes" column="duration_minutes"/>
+        <result property="mode" column="mode"/>
+    </resultMap>
+
+    <select id="listFocus" resultMap="FocusRowMap">
+        SELECT id, started_at, duration_minutes, mode
+        FROM focus_session
+        WHERE user_id = #{userId}
+          AND started_at &gt;= #{start} AND started_at &lt; #{end}
+        ORDER BY started_at ASC, id ASC
+    </select>
+
+    <resultMap id="LearningRowMap" type="com.orbitworkbench.workbench.domain.LearningMetricRow">
+        <result property="id" column="id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="status" column="status"/>
+    </resultMap>
+
+    <!-- 窗口内「新建立的目标」或「完成的目标」（DONE 的唯一状态变更会写 updated_at）。 -->
+    <select id="listLearningGoals" resultMap="LearningRowMap">
+        SELECT id, created_at, updated_at, status
+        FROM learning_goal
+        WHERE user_id = #{userId}
+          AND ((created_at &gt;= #{start} AND created_at &lt; #{end})
+            OR (status = 'DONE' AND updated_at &gt;= #{start} AND updated_at &lt; #{end}))
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <resultMap id="StudyRowMap" type="com.orbitworkbench.workbench.domain.StudyMetricRow">
+        <result property="id" column="id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="status" column="status"/>
+        <result property="dueDate" column="due_date"/>
+    </resultMap>
+
+    <!--
+      复习任务没有 completed_at；study_task 的唯一状态写路径 updateStatus 必写 updated_at，
+      因此 COMPLETED + updated_at 落在窗口内即视为本窗口完成，时间精度是状态变更时刻。
+    -->
+    <select id="listStudyTasks" resultMap="StudyRowMap">
+        SELECT id, created_at, updated_at, status, due_date
+        FROM study_task
+        WHERE user_id = #{userId}
+          AND ((created_at &gt;= #{start} AND created_at &lt; #{end})
+            OR (status = 'COMPLETED' AND updated_at &gt;= #{start} AND updated_at &lt; #{end}))
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <resultMap id="ReportRowMap" type="com.orbitworkbench.workbench.domain.ReportMetricRow">
+        <result property="id" column="id"/>
+        <result property="createdAt" column="session_ended_at"/>
+        <result property="status" column="status"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="hiringRecommendation" column="hiring_recommendation"/>
+        <result property="scoringRuleVersion" column="scoring_rule_version"/>
+    </resultMap>
+
+    <!-- 事件时刻取会话 ended_at（面试真正发生的时间），不是报告行的 created_at。
+         没有报告的结束场次也保留（status NULL），如实计为「未出分」。 -->
+    <select id="listReports" resultMap="ReportRowMap">
+        SELECT r.id, s.ended_at AS session_ended_at, r.status, r.total_score,
+               r.hiring_recommendation, r.scoring_rule_version
+        FROM interview_session s
+        LEFT JOIN interview_report r ON r.session_id = s.id
+        WHERE s.user_id = #{userId}
+          AND s.status = 'COMPLETED'
+          AND s.ended_at &gt;= #{start} AND s.ended_at &lt; #{end}
+        ORDER BY s.ended_at ASC, s.id ASC
+    </select>
+
+    <select id="countActiveStudyTasks" resultType="long">
+        SELECT COUNT(*)
+        FROM study_task
+        WHERE user_id = #{userId}
+          AND status IN ('PLANNED', 'IN_PROGRESS', 'POSTPONED')
+    </select>
+</mapper>

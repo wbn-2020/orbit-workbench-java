@@ -64,8 +64,10 @@ public class InterviewReportService {
     /**
      * 评分规则版本（14 §4）：哈希材料是「这份报告怎么被打出来」的全部内容——评分提示词、
      * 解析上限与录用建议集合。改任意一项都会得到新版本，不引入需要人工声明的版本表。
+     *
+     * <p>public：报告中心与周期复盘都要按版本过滤样本，跨版本分数不可比是硬口径。
      */
-    static final String SCORING_RULE_VERSION = computeScoringRuleVersion();
+    public static final String SCORING_RULE_VERSION = computeScoringRuleVersion();
 
     private static String computeScoringRuleVersion() {
         String material = SYSTEM_PROMPT + '\n' + MAX_DIMENSIONS + '|' + MAX_DIMENSION_NAME
