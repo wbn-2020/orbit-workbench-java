@@ -31,6 +31,6 @@ class ScenarioStreamSessionTest {
                 session.fail(failure, 0).getErrorCode());
         session.fail(failure, 0);
         verify(audit, times(1)).finish(any(), any(), any(), eq("FAILED"), any(),
-                anyInt(), anyInt(), anyInt(), any(), anyBoolean());
+                anyInt(), anyInt(), anyInt(), any(), any(), any(), anyBoolean());
     }
 }

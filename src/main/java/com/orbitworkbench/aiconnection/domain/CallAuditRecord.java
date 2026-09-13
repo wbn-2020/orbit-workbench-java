@@ -17,11 +17,19 @@ public class CallAuditRecord {
     private int responseChars;
     private Integer inputTokens;
     private Integer outputTokens;
+    /** 命中缓存的输入 token（input_tokens 的子集），V42；上游没报为 null。 */
+    private Integer cachedInputTokens;
+    /** 推理输出 token（output_tokens 的子集），V42；仅展示明细，计费单价同输出。 */
+    private Integer reasoningOutputTokens;
     private java.math.BigDecimal costAmount;
     public Integer getInputTokens() { return inputTokens; }
     public void setInputTokens(Integer inputTokens) { this.inputTokens = inputTokens; }
     public Integer getOutputTokens() { return outputTokens; }
     public void setOutputTokens(Integer outputTokens) { this.outputTokens = outputTokens; }
+    public Integer getCachedInputTokens() { return cachedInputTokens; }
+    public void setCachedInputTokens(Integer cachedInputTokens) { this.cachedInputTokens = cachedInputTokens; }
+    public Integer getReasoningOutputTokens() { return reasoningOutputTokens; }
+    public void setReasoningOutputTokens(Integer reasoningOutputTokens) { this.reasoningOutputTokens = reasoningOutputTokens; }
     public java.math.BigDecimal getCostAmount() { return costAmount; }
     public void setCostAmount(java.math.BigDecimal costAmount) { this.costAmount = costAmount; }
 

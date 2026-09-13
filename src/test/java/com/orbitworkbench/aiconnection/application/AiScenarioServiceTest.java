@@ -227,6 +227,6 @@ class AiScenarioServiceTest {
         return new ConnectionResponse(id, 1L, name, "OPENAI_COMPATIBLE", "https://gw.example/v1",
                 "/chat/completions", "CHAT_COMPLETIONS", "model-x", "****", enabled, 60000,
                 "SUCCEEDED", 200, null, null, null, Instant.now(), Instant.now(),
-                "NONE", false, false, null, null);
+                "NONE", false, false, null, null, null);
     }
 }

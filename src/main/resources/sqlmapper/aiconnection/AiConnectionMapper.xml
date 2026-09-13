@@ -18,6 +18,7 @@
         <result property="timeoutMs" column="timeout_ms"/>
         <result property="inputPricePerMillion" column="input_price_per_million"/>
         <result property="outputPricePerMillion" column="output_price_per_million"/>
+        <result property="cachedInputPricePerMillion" column="cached_input_price_per_million"/>
         <result property="lastTestStatus" column="last_test_status"/>
         <result property="lastTestedAt" column="last_tested_at"/>
         <result property="lastTestLatencyMs" column="last_test_latency_ms"/>
@@ -39,6 +40,7 @@
         c.base_url, c.endpoint_path, c.protocol, c.credential_ciphertext,
         c.credential_iv, c.credential_key_version, c.credential_masked, c.enabled,
         c.timeout_ms, c.input_price_per_million, c.output_price_per_million,
+        c.cached_input_price_per_million,
         c.last_test_status, c.last_tested_at, c.last_test_latency_ms,
         c.last_error_code, c.last_error_summary, c.configuration_version,
         c.deleted_at, c.created_at, c.updated_at,
@@ -54,10 +56,12 @@
         INSERT INTO ai_connection(provider_catalog_id, name, base_url, endpoint_path, protocol,
           credential_ciphertext, credential_iv, credential_key_version, credential_masked,
           enabled, timeout_ms, input_price_per_million, output_price_per_million,
+          cached_input_price_per_million,
           last_test_status, created_at, updated_at)
         VALUES(#{providerCatalogId}, #{name}, #{baseUrl}, #{endpointPath}, #{protocol},
           #{credentialCiphertext}, #{credentialIv}, #{credentialKeyVersion}, #{credentialMasked},
           #{enabled}, #{timeoutMs}, #{inputPricePerMillion}, #{outputPricePerMillion},
+          #{cachedInputPricePerMillion},
           #{lastTestStatus}, #{createdAt}, #{updatedAt})
     </insert>
     <insert id="insertModelProfile" parameterType="com.orbitworkbench.aiconnection.domain.AiConnectionRecord"
@@ -108,6 +112,7 @@
             timeout_ms = #{timeoutMs},
             input_price_per_million = #{inputPricePerMillion},
             output_price_per_million = #{outputPricePerMillion},
+            cached_input_price_per_million = #{cachedInputPricePerMillion},
             last_test_status = #{lastTestStatus},
             configuration_version = configuration_version + 1,
             updated_at = #{updatedAt}
@@ -164,7 +169,8 @@
         SELECT COUNT(*)
         FROM ai_connection
         WHERE deleted_at IS NULL
-          AND (input_price_per_million IS NOT NULL OR output_price_per_million IS NOT NULL)
+          AND (input_price_per_million IS NOT NULL OR output_price_per_million IS NOT NULL
+               OR cached_input_price_per_million IS NOT NULL)
     </select>
 
 </mapper>

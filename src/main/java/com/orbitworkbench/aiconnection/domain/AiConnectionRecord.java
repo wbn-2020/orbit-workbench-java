@@ -18,6 +18,7 @@ public class AiConnectionRecord {
     private int timeoutMs;
     private java.math.BigDecimal inputPricePerMillion;
     private java.math.BigDecimal outputPricePerMillion;
+    private java.math.BigDecimal cachedInputPricePerMillion;
     private String lastTestStatus;
     private Instant lastTestedAt;
     private Integer lastTestLatencyMs;
@@ -64,6 +65,8 @@ public class AiConnectionRecord {
     public void setInputPricePerMillion(java.math.BigDecimal v) { this.inputPricePerMillion = v; }
     public java.math.BigDecimal getOutputPricePerMillion() { return outputPricePerMillion; }
     public void setOutputPricePerMillion(java.math.BigDecimal v) { this.outputPricePerMillion = v; }
+    public java.math.BigDecimal getCachedInputPricePerMillion() { return cachedInputPricePerMillion; }
+    public void setCachedInputPricePerMillion(java.math.BigDecimal v) { this.cachedInputPricePerMillion = v; }
     public String getLastTestStatus() { return lastTestStatus; }
     public void setLastTestStatus(String value) { this.lastTestStatus = value; }
     public Instant getLastTestedAt() { return lastTestedAt; }

@@ -63,6 +63,11 @@ public final class AiScenarioDtos {
             Integer latencyMs,
             int requestChars,
             int responseChars,
+            Integer inputTokens,
+            Integer outputTokens,
+            Integer cachedInputTokens,
+            Integer reasoningOutputTokens,
+            java.math.BigDecimal costAmount,
             Instant createdAt,
             Instant finishedAt) {
 
@@ -72,6 +77,9 @@ public final class AiScenarioDtos {
                     record.getUsedConnectionId(), record.getUsedConnectionName(),
                     record.isBackupAttempted(), record.getStatus(), record.getErrorCode(),
                     record.getLatencyMs(), record.getRequestChars(), record.getResponseChars(),
+                    record.getInputTokens(), record.getOutputTokens(),
+                    record.getCachedInputTokens(), record.getReasoningOutputTokens(),
+                    record.getCostAmount(),
                     record.getCreatedAt(), record.getFinishedAt());
         }
 

@@ -15,6 +15,8 @@ public class UsageSummary {
     private long failed;
     private long inputTokens;
     private long outputTokens;
+    private long cachedInputTokens;
+    private long reasoningOutputTokens;
     private BigDecimal costAmount;
     private long pricedCalls;
     private long unpricedCalls;
@@ -29,6 +31,10 @@ public class UsageSummary {
     public void setInputTokens(long inputTokens) { this.inputTokens = inputTokens; }
     public long getOutputTokens() { return outputTokens; }
     public void setOutputTokens(long outputTokens) { this.outputTokens = outputTokens; }
+    public long getCachedInputTokens() { return cachedInputTokens; }
+    public void setCachedInputTokens(long cachedInputTokens) { this.cachedInputTokens = cachedInputTokens; }
+    public long getReasoningOutputTokens() { return reasoningOutputTokens; }
+    public void setReasoningOutputTokens(long reasoningOutputTokens) { this.reasoningOutputTokens = reasoningOutputTokens; }
     public BigDecimal getCostAmount() { return costAmount; }
     public void setCostAmount(BigDecimal costAmount) { this.costAmount = costAmount; }
     public long getPricedCalls() { return pricedCalls; }

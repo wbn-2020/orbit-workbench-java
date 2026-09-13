@@ -81,7 +81,21 @@ final class AiJsonSupport {
             output = integer(usage, "output_tokens");
         }
         Integer total = integer(usage, "total_tokens");
-        return new AiUsage(input, output, total);
+        // 明细两套命名：chat 风格 prompt_/completion_，responses 风格 input_/output_；都没有则保持 null。
+        Integer cached = detailInteger(usage, "prompt_tokens_details", "cached_tokens");
+        if (cached == null) {
+            cached = detailInteger(usage, "input_tokens_details", "cached_tokens");
+        }
+        Integer reasoning = detailInteger(usage, "completion_tokens_details", "reasoning_tokens");
+        if (reasoning == null) {
+            reasoning = detailInteger(usage, "output_tokens_details", "reasoning_tokens");
+        }
+        return new AiUsage(input, output, total, cached, reasoning);
+    }
+
+    private static Integer detailInteger(JsonNode usage, String detailsField, String valueField) {
+        JsonNode details = node(usage, detailsField);
+        return integer(details, valueField);
     }
 
     static Integer integer(JsonNode node, String field) {

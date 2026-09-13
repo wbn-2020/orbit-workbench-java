@@ -37,6 +37,8 @@ public interface AiScenarioMapper {
             @Param("responseChars") Integer responseChars,
             @Param("inputTokens") Integer inputTokens,
             @Param("outputTokens") Integer outputTokens,
+            @Param("cachedInputTokens") Integer cachedInputTokens,
+            @Param("reasoningOutputTokens") Integer reasoningOutputTokens,
             @Param("costAmount") java.math.BigDecimal costAmount,
             @Param("usedConnectionId") Long usedConnectionId,
             @Param("backupAttempted") boolean backupAttempted,

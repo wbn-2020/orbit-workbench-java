@@ -173,8 +173,8 @@ public class InterviewQuestionService {
                         AiCallAuditRecorder.STATUS_FAILED,
                         ErrorCode.INVALID_STRUCTURED_OUTPUT.name(), elapsedMillis(start),
                         requestChars, buffer.length(),
-                        usageOf(usage), outputTokensOf(usage),
-                        AiCallAuditRecorder.cost(route.primary(), usageOf(usage), outputTokensOf(usage)),
+                        usage.get(),
+                        AiCallAuditRecorder.cost(route.primary(), usage.get()),
                         route.primary().connectionId(), false);
                 return Flux.just(sse("error", "面试出题未完成：模型未返回有效题目"));
             }
@@ -183,8 +183,8 @@ public class InterviewQuestionService {
             aiCallAuditRecorder.finish(auditId, userId, AiScenario.INTERVIEW_QUESTION,
                     AiCallAuditRecorder.STATUS_SUCCEEDED, null, elapsedMillis(start),
                     requestChars, question.length(),
-                    usageOf(usage), outputTokensOf(usage),
-                    AiCallAuditRecorder.cost(route.primary(), usageOf(usage), outputTokensOf(usage)),
+                    usage.get(),
+                    AiCallAuditRecorder.cost(route.primary(), usage.get()),
                     route.primary().connectionId(), false);
             String payload = "{\"turnId\":" + turn.getId() + ",\"turnNo\":" + turn.getTurnNo()
                     + ",\"question\":\"" + jsonEscape(question) + "\"}";
@@ -197,19 +197,11 @@ public class InterviewQuestionService {
                     aiCallAuditRecorder.finish(auditId, userId, AiScenario.INTERVIEW_QUESTION,
                             AiCallAuditRecorder.STATUS_FAILED, mapped.getErrorCode().name(),
                             elapsedMillis(start), requestChars, buffer.length(),
-                            usageOf(usage), outputTokensOf(usage),
-                            AiCallAuditRecorder.cost(route.primary(), usageOf(usage), outputTokensOf(usage)),
+                            usage.get(),
+                            AiCallAuditRecorder.cost(route.primary(), usage.get()),
                             route.primary().connectionId(), false);
                     return Flux.just(sse("error", mapped.getMessage()));
                 });
-    }
-
-    private static Integer usageOf(java.util.concurrent.atomic.AtomicReference<com.orbitworkbench.ai.application.AiUsage> ref) {
-        return ref.get() == null ? null : ref.get().inputTokens();
-    }
-
-    private static Integer outputTokensOf(java.util.concurrent.atomic.AtomicReference<com.orbitworkbench.ai.application.AiUsage> ref) {
-        return ref.get() == null ? null : ref.get().outputTokens();
     }
 
     private int elapsedMillis(long start) {

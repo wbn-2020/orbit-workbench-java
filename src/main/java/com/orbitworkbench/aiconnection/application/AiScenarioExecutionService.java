@@ -94,8 +94,8 @@ public class AiScenarioExecutionService {
         if (first.failure() == null) {
             recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_SUCCEEDED, null,
                     first.latencyMs(), requestChars, first.text().length(),
-                    first.inputTokens(), first.outputTokens(),
-                    AiCallAuditRecorder.cost(route.primary(), first.inputTokens(), first.outputTokens()),
+                    first.usage(),
+                    AiCallAuditRecorder.cost(route.primary(), first.usage()),
                     route.primary().connectionId(), false);
             return first.text();
         }
@@ -111,23 +111,23 @@ public class AiScenarioExecutionService {
             if (second.failure() == null) {
                 recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_SUCCEEDED, null,
                         second.latencyMs(), requestChars, second.text().length(),
-                        second.inputTokens(), second.outputTokens(),
-                        AiCallAuditRecorder.cost(route.backup(), second.inputTokens(), second.outputTokens()),
+                        second.usage(),
+                        AiCallAuditRecorder.cost(route.backup(), second.usage()),
                         route.backup().connectionId(), true);
                 return second.text();
             }
             recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_FAILED,
                     second.errorCode().name(), second.latencyMs(), requestChars,
-                    second.partialChars(), second.inputTokens(), second.outputTokens(),
-                    AiCallAuditRecorder.cost(route.backup(), second.inputTokens(), second.outputTokens()),
+                    second.partialChars(), second.usage(),
+                    AiCallAuditRecorder.cost(route.backup(), second.usage()),
                     route.backup().connectionId(), true);
             throw second.failure();
         }
 
         recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_FAILED,
                 first.errorCode().name(), first.latencyMs(), requestChars, first.partialChars(),
-                first.inputTokens(), first.outputTokens(),
-                AiCallAuditRecorder.cost(route.primary(), first.inputTokens(), first.outputTokens()),
+                first.usage(),
+                AiCallAuditRecorder.cost(route.primary(), first.usage()),
                 route.primary().connectionId(), false);
         throw first.failure();
     }
@@ -161,9 +161,7 @@ public class AiScenarioExecutionService {
             return Attempt.failed(blank.getErrorCode(), blank, 0, elapsedMillis(start));
         }
         com.orbitworkbench.ai.application.AiUsage observed = usage.get();
-        return Attempt.succeeded(text.toString(), elapsedMillis(start),
-                observed == null ? null : observed.inputTokens(),
-                observed == null ? null : observed.outputTokens());
+        return Attempt.succeeded(text.toString(), elapsedMillis(start), observed);
     }
 
     /**
@@ -183,14 +181,15 @@ public class AiScenarioExecutionService {
 
     private record Attempt(String text, int partialChars, int latencyMs,
                            ErrorCode errorCode, ApiException failure,
-                           Integer inputTokens, Integer outputTokens) {
+                           com.orbitworkbench.ai.application.AiUsage usage) {
 
-        static Attempt succeeded(String text, int latencyMs, Integer inputTokens, Integer outputTokens) {
-            return new Attempt(text, text.length(), latencyMs, null, null, inputTokens, outputTokens);
+        static Attempt succeeded(String text, int latencyMs,
+                                 com.orbitworkbench.ai.application.AiUsage usage) {
+            return new Attempt(text, text.length(), latencyMs, null, null, usage);
         }
 
         static Attempt failed(ErrorCode errorCode, ApiException failure, int partialChars, int latencyMs) {
-            return new Attempt(null, partialChars, latencyMs, errorCode, failure, null, null);
+            return new Attempt(null, partialChars, latencyMs, errorCode, failure, null);
         }
     }
 }

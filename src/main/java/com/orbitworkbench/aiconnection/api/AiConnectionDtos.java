@@ -24,7 +24,8 @@ public final class AiConnectionDtos {
             Boolean enabled,
             String webSearchDialect,
             @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal inputPricePerMillion,
-            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal outputPricePerMillion
+            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal outputPricePerMillion,
+            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal cachedInputPricePerMillion
     ) {}
 
     public record UpdateConnectionRequest(
@@ -40,7 +41,8 @@ public final class AiConnectionDtos {
             Boolean enabled,
             String webSearchDialect,
             @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal inputPricePerMillion,
-            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal outputPricePerMillion
+            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal outputPricePerMillion,
+            @jakarta.validation.constraints.DecimalMin("0") java.math.BigDecimal cachedInputPricePerMillion
     ) {}
 
     public record EnabledRequest(boolean enabled,
@@ -84,7 +86,8 @@ public final class AiConnectionDtos {
             boolean webSearchSupported,
             boolean forcedSearchSupported,
             java.math.BigDecimal inputPricePerMillion,
-            java.math.BigDecimal outputPricePerMillion
+            java.math.BigDecimal outputPricePerMillion,
+            java.math.BigDecimal cachedInputPricePerMillion
     ) {
         public static ConnectionResponse from(AiConnectionRecord c) {
             ModelCapabilities capabilities = ModelCapabilities.parse(c.getCapabilitiesJson());
@@ -97,7 +100,8 @@ public final class AiConnectionDtos {
                     c.getCreatedAt(), c.getUpdatedAt(), capabilities.webSearchDialect().name(),
                     capabilities.webSearchDialect().supportsWebSearch(),
                     capabilities.webSearchDialect().supportsForcedSearch(),
-                    c.getInputPricePerMillion(), c.getOutputPricePerMillion());
+                    c.getInputPricePerMillion(), c.getOutputPricePerMillion(),
+                    c.getCachedInputPricePerMillion());
         }
     }
 

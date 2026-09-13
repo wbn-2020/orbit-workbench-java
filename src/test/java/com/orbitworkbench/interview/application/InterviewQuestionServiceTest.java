@@ -299,7 +299,7 @@ class InterviewQuestionServiceTest {
         verify(turnMapper, never()).insert(any(InterviewTurnRecord.class));
         verify(aiCallAuditRecorder).finish(eq(77L), eq(7L), eq(AiScenario.INTERVIEW_QUESTION),
                 eq(AiCallAuditRecorder.STATUS_FAILED), eq("RATE_LIMITED"), anyInt(), anyInt(),
-                anyInt(), isNull(), isNull(), isNull(), eq(5L), eq(false));
+                anyInt(), isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test
@@ -318,7 +318,7 @@ class InterviewQuestionServiceTest {
         verify(aiCallAuditRecorder).finish(eq(77L), eq(7L), eq(AiScenario.INTERVIEW_QUESTION),
                 eq(AiCallAuditRecorder.STATUS_SUCCEEDED), isNull(), anyInt(), anyInt(),
                 eq("请说明线程池的核心参数与拒绝策略？".length()),
-                isNull(), isNull(), isNull(), eq(5L), eq(false));
+                isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test
@@ -338,7 +338,7 @@ class InterviewQuestionServiceTest {
         verify(turnMapper, never()).insert(any(InterviewTurnRecord.class));
         verify(aiCallAuditRecorder).finish(eq(77L), eq(7L), eq(AiScenario.INTERVIEW_QUESTION),
                 eq(AiCallAuditRecorder.STATUS_FAILED), eq("INVALID_STRUCTURED_OUTPUT"),
-                anyInt(), anyInt(), anyInt(), isNull(), isNull(), isNull(), eq(5L), eq(false));
+                anyInt(), anyInt(), anyInt(), isNull(), isNull(), eq(5L), eq(false));
     }
 
     private void stubExecution(String text) {

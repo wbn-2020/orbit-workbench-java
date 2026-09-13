@@ -288,6 +288,7 @@ class AiConnectionServiceTest {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 

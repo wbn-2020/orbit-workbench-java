@@ -56,7 +56,7 @@ class ReportStreamRegressionTest {
         order.verify(gateway).stream(any());
         order.verify(reports).finalizeStreamedReport(interview, "report");
         order.verify(audit).finish(eq(77L), eq(7L), any(), eq("SUCCEEDED"), isNull(),
-                anyInt(), anyInt(), eq(6), isNull(), isNull(), isNull(), eq(5L), eq(false));
+                anyInt(), anyInt(), eq(6), isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test
@@ -78,7 +78,7 @@ class ReportStreamRegressionTest {
         verify(reports).markFailedAndNotifyForStream(eq(interview), any());
         verify(reports, never()).finalizeStreamedReport(any(), any());
         verify(audit).finish(eq(77L), eq(7L), any(), eq("FAILED"), any(),
-                anyInt(), anyInt(), eq(7), isNull(), isNull(), isNull(), eq(5L), eq(false));
+                anyInt(), anyInt(), eq(7), isNull(), isNull(), eq(5L), eq(false));
     }
 
     @Test
@@ -90,7 +90,7 @@ class ReportStreamRegressionTest {
         assertEquals("error", events.getLast().event());
         verify(reports, times(1)).markFailedAndNotifyForStream(eq(interview), any());
         verify(audit, times(1)).finish(any(), any(), any(), eq("FAILED"), any(),
-                anyInt(), anyInt(), anyInt(), any(), anyBoolean());
+                anyInt(), anyInt(), anyInt(), any(), any(), any(), anyBoolean());
     }
 
     private UsernamePasswordAuthenticationToken principal() {

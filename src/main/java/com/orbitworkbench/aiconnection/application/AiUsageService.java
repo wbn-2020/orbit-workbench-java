@@ -43,13 +43,16 @@ public class AiUsageService {
             long failed,
             long inputTokens,
             long outputTokens,
+            long cachedInputTokens,
+            long reasoningOutputTokens,
             BigDecimal costAmount,
             long unpricedCalls) {
 
         static RowView from(UsageRow row) {
             return new RowView(row.getKey(), row.getCalls(), row.getSucceeded(), row.getFailed(),
-                    row.getInputTokens(), row.getOutputTokens(), row.getCostAmount(),
-                    row.getUnpricedCalls());
+                    row.getInputTokens(), row.getOutputTokens(),
+                    row.getCachedInputTokens(), row.getReasoningOutputTokens(),
+                    row.getCostAmount(), row.getUnpricedCalls());
         }
     }
 

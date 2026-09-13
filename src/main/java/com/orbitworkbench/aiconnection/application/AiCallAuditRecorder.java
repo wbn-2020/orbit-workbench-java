@@ -69,17 +69,19 @@ public class AiCallAuditRecorder {
                        int latencyMs, int requestChars, int responseChars, Long usedConnectionId,
                        boolean backupAttempted) {
         finish(auditId, userId, scenario, status, errorCode, latencyMs, requestChars, responseChars,
-                null, null, null, usedConnectionId, backupAttempted);
+                null, null, usedConnectionId, backupAttempted);
     }
 
     /**
-     * 带用量与成本的收尾。三个值都允许 null——供应商没报 token 就说不知道，
-     * 不用 0 冒充「这次没花钱」（同 audit 表三列可空的设计口径）。
+     * 带用量与成本的收尾。usage 允许 null——供应商没报 token 就说不知道，
+     * 不用 0 冒充「这次没花钱」（同 audit 表列可空的设计口径）。
+     * V42：明细（cached/reasoning）随 usage 一起落库，缓存是输入的子集、推理是输出的子集。
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void finish(Long auditId, Long userId, AiScenario scenario, String status, String errorCode,
                        int latencyMs, int requestChars, int responseChars,
-                       Integer inputTokens, Integer outputTokens, java.math.BigDecimal costAmount,
+                       com.orbitworkbench.ai.application.AiUsage usage,
+                       java.math.BigDecimal costAmount,
                        Long usedConnectionId, boolean backupAttempted) {
         if (auditId == null) {
             return;
@@ -87,8 +89,12 @@ public class AiCallAuditRecorder {
         try {
             mapper.finishAudit(auditId, userId, status, truncate(errorCode, MAX_ERROR_CODE_LENGTH),
                     Math.max(0, latencyMs), Math.max(0, requestChars), Math.max(0, responseChars),
-                    inputTokens == null ? null : Math.max(0, inputTokens),
-                    outputTokens == null ? null : Math.max(0, outputTokens),
+                    usage == null || usage.inputTokens() == null ? null : Math.max(0, usage.inputTokens()),
+                    usage == null || usage.outputTokens() == null ? null : Math.max(0, usage.outputTokens()),
+                    usage == null || usage.cachedInputTokens() == null
+                            ? null : Math.max(0, usage.cachedInputTokens()),
+                    usage == null || usage.reasoningOutputTokens() == null
+                            ? null : Math.max(0, usage.reasoningOutputTokens()),
                     costAmount, usedConnectionId, backupAttempted, Instant.now());
         } catch (RuntimeException exception) {
             log.warn("写入 AI 调用审计失败（结束），scenario={} userId={} auditId={}",
@@ -134,11 +140,30 @@ public class AiCallAuditRecorder {
     }
 
     /**
-     * 成本 = 输入 token × 输入单价 + 输出 token × 输出单价（单位：每百万 token）。
+     * 成本 = 非缓存输入 × 输入单价 + 缓存命中输入 × 缓存单价 + 输出 × 输出单价（单位：每百万 token）。
      * 单价缺失或 token 缺失都返回 null——算不出就是算不出，不返回 0 冒充免费。
+     *
+     * <p>缓存单价没配时，这部分按常规输入价计——宁可高估也不低估：用户看到「花费比真实账单多」
+     * 会去查单价配置，看到「比账单少」则会误以为便宜（与 unpricedCalls 的诚实口径同一动机）。
      */
     public static java.math.BigDecimal cost(AiConnectionRuntimeConfig connection,
+                                            com.orbitworkbench.ai.application.AiUsage usage) {
+        if (connection == null || usage == null) {
+            return null;
+        }
+        return cost(connection, usage.inputTokens(), usage.outputTokens(),
+                usage.cachedInputTokens());
+    }
+
+    /** 旧口径三参版：无缓存明细（上游没报 / 非缓存场景）仍可用。 */
+    public static java.math.BigDecimal cost(AiConnectionRuntimeConfig connection,
                                             Integer inputTokens, Integer outputTokens) {
+        return cost(connection, inputTokens, outputTokens, null);
+    }
+
+    public static java.math.BigDecimal cost(AiConnectionRuntimeConfig connection,
+                                            Integer inputTokens, Integer outputTokens,
+                                            Integer cachedInputTokens) {
         if (connection == null || (inputTokens == null && outputTokens == null)) {
             return null;
         }
@@ -150,9 +175,21 @@ public class AiCallAuditRecorder {
         java.math.BigDecimal million = java.math.BigDecimal.valueOf(1_000_000L);
         java.math.BigDecimal total = java.math.BigDecimal.ZERO;
         boolean any = false;
+        // cached 是 input 的子集：先按缓存价扣出命中部分，剩余按常规输入价；缓存价未配则整体按输入价。
+        int cached = cachedInputTokens == null ? 0 : Math.max(0, cachedInputTokens);
         if (inputTokens != null && inputPrice != null) {
-            total = total.add(inputPrice.multiply(java.math.BigDecimal.valueOf(inputTokens)));
+            int regular = Math.max(0, inputTokens - cached);
+            total = total.add(inputPrice.multiply(java.math.BigDecimal.valueOf(regular)));
             any = true;
+        }
+        if (cached > 0 && inputTokens != null && inputTokens > 0) {
+            java.math.BigDecimal cachePrice =
+                    connection.cachedInputPricePerMillion() == null ? inputPrice
+                            : connection.cachedInputPricePerMillion();
+            if (cachePrice != null) {
+                total = total.add(cachePrice.multiply(java.math.BigDecimal.valueOf(cached)));
+                any = true;
+            }
         }
         if (outputTokens != null && outputPrice != null) {
             total = total.add(outputPrice.multiply(java.math.BigDecimal.valueOf(outputTokens)));
@@ -171,6 +208,7 @@ public class AiCallAuditRecorder {
         if (connection.inputPricePerMillion() != null || connection.outputPricePerMillion() != null) {
             summary.put("pricePerMillionIn", connection.inputPricePerMillion());
             summary.put("pricePerMillionOut", connection.outputPricePerMillion());
+            summary.put("pricePerMillionCachedIn", connection.cachedInputPricePerMillion());
         }
         return summary;
     }

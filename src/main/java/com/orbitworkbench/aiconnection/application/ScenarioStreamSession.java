@@ -89,13 +89,10 @@ public final class ScenarioStreamSession {
     /** 正常收流：审计 SUCCEEDED。fullText 由调用方按已发增量统计。 */
     public void succeed(int fullTextChars) {
         if (!finished.compareAndSet(false, true)) return;
+        com.orbitworkbench.ai.application.AiUsage observed = observedUsage.get();
         recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_SUCCEEDED, null,
-                elapsedMillis(), requestChars, fullTextChars,
-                observedUsage.get() == null ? null : observedUsage.get().inputTokens(),
-                observedUsage.get() == null ? null : observedUsage.get().outputTokens(),
-                AiCallAuditRecorder.cost(resolvedRoute.primary(),
-                        observedUsage.get() == null ? null : observedUsage.get().inputTokens(),
-                        observedUsage.get() == null ? null : observedUsage.get().outputTokens()),
+                elapsedMillis(), requestChars, fullTextChars, observed,
+                AiCallAuditRecorder.cost(resolvedRoute.primary(), observed),
                 resolvedRoute.primary().connectionId(), false);
     }
 
@@ -106,12 +103,9 @@ public final class ScenarioStreamSession {
         // 失败也要记账：上游可能已经处理了部分 token（usage 已上报），照实记录；
         // 没上报就是 null，不编一个数出来。
         com.orbitworkbench.ai.application.AiUsage observed = observedUsage.get();
-        Integer inputTokens = observed == null ? null : observed.inputTokens();
-        Integer outputTokens = observed == null ? null : observed.outputTokens();
         recorder.finish(auditId, userId, scenario, AiCallAuditRecorder.STATUS_FAILED,
-                mapped.getErrorCode().name(), elapsedMillis(), requestChars, partialChars,
-                inputTokens, outputTokens,
-                AiCallAuditRecorder.cost(resolvedRoute.primary(), inputTokens, outputTokens),
+                mapped.getErrorCode().name(), elapsedMillis(), requestChars, partialChars, observed,
+                AiCallAuditRecorder.cost(resolvedRoute.primary(), observed),
                 resolvedRoute.primary().connectionId(), false);
         return mapped;
     }

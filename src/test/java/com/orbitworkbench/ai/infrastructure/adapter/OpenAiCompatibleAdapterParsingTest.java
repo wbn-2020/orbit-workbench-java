@@ -72,6 +72,36 @@ class OpenAiCompatibleAdapterParsingTest {
     }
 
     @Test
+    void chatUsageParsesCachedAndReasoningTokenDetails() {
+        // qwen 系实测形状：details 与顶层同级；上游没报时保持 null，不拿 0 冒充
+        List<AiStreamEvent> withDetails = chatAdapter.parseNonStreaming("""
+                {
+                  "id": "chatcmpl_d1",
+                  "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+                  "usage": {
+                    "prompt_tokens": 63, "completion_tokens": 33, "total_tokens": 96,
+                    "prompt_tokens_details": {"cached_tokens": 48},
+                    "completion_tokens_details": {"reasoning_tokens": 29}
+                  }
+                }
+                """, invocation("CHAT_COMPLETIONS", false));
+        var usage = withDetails.get(4).usage();
+        assertEquals(63, usage.inputTokens());
+        assertEquals(48, usage.cachedInputTokens());
+        assertEquals(29, usage.reasoningOutputTokens());
+
+        List<AiStreamEvent> plain = chatAdapter.parseNonStreaming("""
+                {
+                  "id": "chatcmpl_d2",
+                  "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+                  "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}
+                }
+                """, invocation("CHAT_COMPLETIONS", false));
+        assertNull(plain.get(4).usage().cachedInputTokens());
+        assertNull(plain.get(4).usage().reasoningOutputTokens());
+    }
+
+    @Test
     void chatStreamingRequiresDoneMarkerForRunCompletion() {
         AiInvocation invocation = invocation("CHAT_COMPLETIONS", true);
         AiAdapterCall completedCall = new AiAdapterCall();

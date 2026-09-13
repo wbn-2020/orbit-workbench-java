@@ -30,6 +30,8 @@
         <result property="responseChars" column="response_chars"/>
         <result property="inputTokens" column="input_tokens"/>
         <result property="outputTokens" column="output_tokens"/>
+        <result property="cachedInputTokens" column="cached_input_tokens"/>
+        <result property="reasoningOutputTokens" column="reasoning_output_tokens"/>
         <result property="costAmount" column="cost_amount"/>
         <result property="configurationSnapshotJson" column="configuration_snapshot_json"/>
         <result property="createdAt" column="created_at"/>
@@ -46,7 +48,8 @@
     <sql id="AuditColumns">
         a.id, a.user_id, a.scenario_code, a.primary_connection_id, a.used_connection_id,
         a.backup_attempted, a.status, a.error_code, a.latency_ms, a.request_chars,
-        a.response_chars, a.input_tokens, a.output_tokens, a.cost_amount,
+        a.response_chars, a.input_tokens, a.output_tokens, a.cached_input_tokens,
+        a.reasoning_output_tokens, a.cost_amount,
         a.configuration_snapshot_json, a.created_at, a.finished_at,
         c.name AS used_connection_name
     </sql>
@@ -118,6 +121,8 @@
             response_chars = #{responseChars},
             input_tokens = #{inputTokens},
             output_tokens = #{outputTokens},
+            cached_input_tokens = #{cachedInputTokens},
+            reasoning_output_tokens = #{reasoningOutputTokens},
             cost_amount = #{costAmount},
             used_connection_id = #{usedConnectionId},
             backup_attempted = #{backupAttempted},
@@ -132,6 +137,8 @@
         <result property="failed" column="failed"/>
         <result property="inputTokens" column="input_tokens"/>
         <result property="outputTokens" column="output_tokens"/>
+        <result property="cachedInputTokens" column="cached_input_tokens"/>
+        <result property="reasoningOutputTokens" column="reasoning_output_tokens"/>
         <result property="costAmount" column="cost_amount"/>
         <result property="unpricedCalls" column="unpriced_calls"/>
     </resultMap>
@@ -142,6 +149,8 @@
         <result property="failed" column="failed"/>
         <result property="inputTokens" column="input_tokens"/>
         <result property="outputTokens" column="output_tokens"/>
+        <result property="cachedInputTokens" column="cached_input_tokens"/>
+        <result property="reasoningOutputTokens" column="reasoning_output_tokens"/>
         <result property="costAmount" column="cost_amount"/>
         <result property="pricedCalls" column="priced_calls"/>
         <result property="unpricedCalls" column="unpriced_calls"/>
@@ -155,6 +164,8 @@
         SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed,
         COALESCE(SUM(input_tokens), 0) AS input_tokens,
         COALESCE(SUM(output_tokens), 0) AS output_tokens,
+        COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
+        COALESCE(SUM(reasoning_output_tokens), 0) AS reasoning_output_tokens,
         SUM(cost_amount) AS cost_amount,
         SUM(CASE WHEN cost_amount IS NOT NULL THEN 1 ELSE 0 END) AS priced_calls,
         SUM(CASE WHEN cost_amount IS NULL THEN 1 ELSE 0 END) AS unpriced_calls

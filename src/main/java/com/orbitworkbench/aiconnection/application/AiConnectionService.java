@@ -114,7 +114,8 @@ public class AiConnectionService {
         AiConnectionRecord record = newRecord(request.providerType(), request.name(), request.baseUrl(),
                 request.endpointPath(), request.protocol(), request.modelName(), request.apiKey(),
                 request.timeoutMs(), request.enabled(), request.webSearchDialect(),
-                request.inputPricePerMillion(), request.outputPricePerMillion());
+                request.inputPricePerMillion(), request.outputPricePerMillion(),
+                request.cachedInputPricePerMillion());
         mapper.insertConnection(record);
         mapper.insertModelProfile(record);
         return ConnectionResponse.from(require(record.getId()));
@@ -149,7 +150,8 @@ public class AiConnectionService {
                 request.apiKey() == null || request.apiKey().isBlank()
                         ? null : request.apiKey(),
                 request.timeoutMs(), request.enabled(), request.webSearchDialect(),
-                request.inputPricePerMillion(), request.outputPricePerMillion());
+                request.inputPricePerMillion(), request.outputPricePerMillion(),
+                request.cachedInputPricePerMillion());
         record.setId(id);
         record.setModelProfileId(old.getModelProfileId());
         record.setEnabled(request.enabled() == null ? old.isEnabled() : request.enabled());
@@ -195,7 +197,8 @@ public class AiConnectionService {
         return new AiConnectionRuntimeConfig(record.getId(), record.getModelProfileId(), record.getName(),
                 record.getBaseUrl(), record.getEndpointPath(), record.getProtocol(),
                 record.getModelName(), key, record.getTimeoutMs(), capabilities.webSearchDialect(),
-                record.getInputPricePerMillion(), record.getOutputPricePerMillion());
+                record.getInputPricePerMillion(), record.getOutputPricePerMillion(),
+                record.getCachedInputPricePerMillion());
     }
 
     /** 是否至少配过一条单价——用量页据此区分「未配置单价」与「成本确实为 0」。 */
@@ -211,7 +214,7 @@ public class AiConnectionService {
         AiConnectionRecord record = newRecord(request.providerType(), request.name(), request.baseUrl(),
                 request.endpointPath(), request.protocol(), request.modelName(), request.apiKey(),
                 // 草稿测试是一次性记录：单价与成本无关，传 null
-                request.timeoutMs(), true, null, null, null);
+                request.timeoutMs(), true, null, null, null, null);
         return executeTest(record, request.streaming(), request.testPrompt(), request.apiKey());
     }
 
@@ -321,7 +324,8 @@ public class AiConnectionService {
                                          String protocol, String modelName, String apiKey, Integer timeoutMs,
                                          Boolean enabled, String webSearchDialect,
                                          java.math.BigDecimal inputPricePerMillion,
-                                         java.math.BigDecimal outputPricePerMillion) {
+                                         java.math.BigDecimal outputPricePerMillion,
+                                         java.math.BigDecimal cachedInputPricePerMillion) {
         String provider = providerType.trim().toUpperCase();
         Long providerId = mapper.findProviderId(provider);
         if (providerId == null) {
@@ -353,6 +357,9 @@ public class AiConnectionService {
         }
         record.setEnabled(enabled == null || enabled);
         record.setTimeoutMs(timeoutMs == null ? 30000 : timeoutMs);
+        record.setInputPricePerMillion(inputPricePerMillion);
+        record.setOutputPricePerMillion(outputPricePerMillion);
+        record.setCachedInputPricePerMillion(cachedInputPricePerMillion);
         record.setLastTestStatus("NOT_TESTED");
         record.setConfigurationVersion(1);
         record.setCreatedAt(now);
@@ -476,14 +483,15 @@ public class AiConnectionService {
                                              String modelName, String apiKey, int timeoutMs,
                                              WebSearchDialect webSearchDialect,
                                              java.math.BigDecimal inputPricePerMillion,
-                                             java.math.BigDecimal outputPricePerMillion) {
+                                             java.math.BigDecimal outputPricePerMillion,
+                                             java.math.BigDecimal cachedInputPricePerMillion) {
 
         /** 能力未声明时一律按 NONE 处理：默认值必须是关，否则老调用点会以为搜索已生效。 */
         public AiConnectionRuntimeConfig(Long connectionId, Long modelProfileId, String connectionName,
                                          String baseUrl, String endpointPath, String protocol,
                                          String modelName, String apiKey, int timeoutMs) {
             this(connectionId, modelProfileId, connectionName, baseUrl, endpointPath, protocol,
-                    modelName, apiKey, timeoutMs, WebSearchDialect.NONE, null, null);
+                    modelName, apiKey, timeoutMs, WebSearchDialect.NONE, null, null, null);
         }
 
         /**
@@ -495,7 +503,7 @@ public class AiConnectionService {
                                          String modelName, String apiKey, int timeoutMs,
                                          WebSearchDialect webSearchDialect) {
             this(connectionId, modelProfileId, connectionName, baseUrl, endpointPath, protocol,
-                    modelName, apiKey, timeoutMs, webSearchDialect, null, null);
+                    modelName, apiKey, timeoutMs, webSearchDialect, null, null, null);
         }
     }
 }
