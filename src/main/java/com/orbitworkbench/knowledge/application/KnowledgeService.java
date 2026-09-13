@@ -46,15 +46,24 @@ public class KnowledgeService {
     private final KnowledgeChunkMapper chunkMapper;
     private final LocalStorageService storageService;
     private final AiScenarioExecutionService aiScenarioExecution;
+    private final com.orbitworkbench.userfact.application.UserFactService userFactService;
 
     public KnowledgeService(ProjectMapper projectMapper,
                             KnowledgeChunkMapper chunkMapper,
                             LocalStorageService storageService,
-                            AiScenarioExecutionService aiScenarioExecution) {
+                            AiScenarioExecutionService aiScenarioExecution,
+                            com.orbitworkbench.userfact.application.UserFactService userFactService) {
         this.projectMapper = projectMapper;
         this.chunkMapper = chunkMapper;
         this.storageService = storageService;
         this.aiScenarioExecution = aiScenarioExecution;
+        this.userFactService = userFactService;
+    }
+
+    /** 个人记忆层注入：只带用户确认过的画像事实，无事实返回空串。 */
+    private String memoryContext(Long userId) {
+        String memory = userFactService.confirmedContext(userId);
+        return memory.isEmpty() ? "" : memory + '\n';
     }
 
     @Transactional
@@ -119,7 +128,7 @@ public class KnowledgeService {
         }
 
         String answer = aiScenarioExecution.executeText(AiScenario.KNOWLEDGE_ANSWER, userId, null,
-                ANSWER_SYSTEM_PROMPT, "资料：\n" + context + "\n问题：" + keyword,
+                ANSWER_SYSTEM_PROMPT, memoryContext(userId) + "资料：\n" + context + "\n问题：" + keyword,
                 ANSWER_MAX_TOKENS, ANSWER_TIMEOUT).trim();
         return new AskResponse(answer, false, sources);
     }
@@ -148,7 +157,7 @@ public class KnowledgeService {
                     .append(snippet(chunk.getContent(), 1200)).append("\n\n");
         }
         return new AskStreamPreparation(sources,
-                "资料：\n" + context + "\n问题：" + keyword, false);
+                memoryContext(userId) + "资料：\n" + context + "\n问题：" + keyword, false);
     }
 
     /** 流式问答使用的系统提示词（Controller 开流用）。 */

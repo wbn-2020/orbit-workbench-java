@@ -51,9 +51,10 @@ class AiScenarioServiceTest {
 
         List<ScenarioRouteResponse> routes = service.list(7L);
 
-        assertEquals(4, routes.size());
+        assertEquals(5, routes.size());
         assertEquals(List.of("INTERVIEW_QUESTION", "INTERVIEW_REPORT", "PROJECT_FACT",
-                "KNOWLEDGE_ANSWER"), routes.stream().map(ScenarioRouteResponse::scenario).toList());
+                "KNOWLEDGE_ANSWER", "USER_FACT"),
+                routes.stream().map(ScenarioRouteResponse::scenario).toList());
         assertEquals("DEFAULT", routes.get(0).source());
         assertEquals(3L, routes.get(0).primaryConnectionId());
         assertEquals("兜底账户", routes.get(0).primaryConnectionName());

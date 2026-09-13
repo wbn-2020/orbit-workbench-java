@@ -24,6 +24,7 @@ import com.orbitworkbench.interview.infrastructure.mapper.InterviewTurnMapper;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.RequestEnums;
+import com.orbitworkbench.userfact.application.UserFactService;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -57,6 +58,7 @@ public class InterviewQuestionService {
     private final ModelGateway modelGateway;
     private final ObjectMapper objectMapper;
     private final InterviewTurnWriteService turnWriteService;
+    private final UserFactService userFactService;
 
     public InterviewQuestionService(InterviewSessionMapper sessionMapper,
                                     InterviewTurnMapper turnMapper,
@@ -65,7 +67,8 @@ public class InterviewQuestionService {
                                     AiCallAuditRecorder aiCallAuditRecorder,
                                     ModelGateway modelGateway,
                                     ObjectMapper objectMapper,
-                                    InterviewTurnWriteService turnWriteService) {
+                                    InterviewTurnWriteService turnWriteService,
+                                    UserFactService userFactService) {
         this.sessionMapper = sessionMapper;
         this.turnMapper = turnMapper;
         this.aiScenarioRouter = aiScenarioRouter;
@@ -74,6 +77,7 @@ public class InterviewQuestionService {
         this.modelGateway = modelGateway;
         this.objectMapper = objectMapper;
         this.turnWriteService = turnWriteService;
+        this.userFactService = userFactService;
     }
 
     public TurnResponse next(Long userId, Long sessionId, NextQuestionRequest request) {
@@ -277,6 +281,11 @@ public class InterviewQuestionService {
         String knowledgeContext = knowledgeBindingsContext(session.getKnowledgeBindingsJson());
         if (!knowledgeContext.isEmpty()) {
             user.append(knowledgeContext).append('\n');
+        }
+        // 个人记忆层：只注入用户确认过的画像事实，预算封顶；无事实时整段省略
+        String memoryContext = userFactService.confirmedContext(session.getUserId());
+        if (!memoryContext.isEmpty()) {
+            user.append(memoryContext).append('\n');
         }
         user.append("已进行的问答（可为空）：\n");
         for (InterviewTurnRecord turn : turns) {

@@ -70,12 +70,19 @@ class InterviewQuestionServiceTest {
 
     private InterviewQuestionService service;
 
+    /** 个人记忆层 mock：默认注入空上下文，个别测试可覆盖返回。 */
+    private com.orbitworkbench.userfact.application.UserFactService userFactService;
+
     @BeforeEach
     void setUp() {
+        userFactService = org.mockito.Mockito.mock(
+                com.orbitworkbench.userfact.application.UserFactService.class);
+        when(userFactService.confirmedContext(any())).thenReturn("");
         service = new InterviewQuestionService(sessionMapper, turnMapper, aiScenarioRouter,
                 aiScenarioExecution, aiCallAuditRecorder, modelGateway,
                 new com.fasterxml.jackson.databind.ObjectMapper(),
-                new InterviewTurnWriteService(sessionMapper, turnMapper));
+                new InterviewTurnWriteService(sessionMapper, turnMapper),
+                userFactService);
         when(sessionMapper.findByIdForUpdate(any())).thenAnswer(invocation ->
                 sessionMapper.findById(invocation.getArgument(0)));
         when(aiScenarioRouter.resolve(any(), any(), any())).thenReturn(

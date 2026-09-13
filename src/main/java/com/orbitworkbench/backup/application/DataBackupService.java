@@ -42,6 +42,7 @@ public class DataBackupService {
     private static final List<String> USER_TABLES = List.of(
             "project",
             "project_fact",
+            "user_fact",
             "job_profile",
             "knowledge_chunk",
             "knowledge_card",
