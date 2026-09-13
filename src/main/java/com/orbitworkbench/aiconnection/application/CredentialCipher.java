@@ -54,8 +54,14 @@ public class CredentialCipher {
             cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(decodeKey(), "AES"),
                     new GCMParameterSpec(TAG_BITS, iv));
             return new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
+        } catch (ApiException exception) {
+            throw exception;
         } catch (Exception exception) {
-            throw new IllegalStateException("凭据解密失败", exception);
+            // GCM 校验失败最常见的现实原因是主密钥换了（如密钥文件丢失后重建）：
+            // 这是可恢复的用户状态而非服务器故障，按 409 引导重录 Key，不伪装 500。
+            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
+                    "凭据无法解密（应用主密钥可能已更换），请到「AI 连接」重新保存该账户的 API Key",
+                    exception);
         }
     }
 

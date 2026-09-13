@@ -123,10 +123,15 @@ class UserFactServiceTest {
     void distillRejectsWhenNoPersonalMaterial() {
         when(factMapper.countAnalyzed(1L)).thenReturn(0L);
         when(jobProfileMapper.findByUserId(1L)).thenReturn(null);
-        when(workLogMapper.listByUser(eq(1L), any(), any())).thenReturn(List.of());
-        when(knowledgeCardMapper.listByUser(eq(1L), any(), any())).thenReturn(List.of());
-        when(learningGoalMapper.listByUser(eq(1L), any(), any())).thenReturn(List.of());
-        when(reportMapper.listByUser(eq(1L), any(), any(), any(), any(), any(), any(), any()))
+        // limit/offset 是原始 int，matcher 必须用 anyInt（any() 返回 null 会在拆箱处 NPE）
+        when(workLogMapper.listByUser(eq(1L), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of());
+        when(knowledgeCardMapper.listByUser(eq(1L), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of());
+        when(learningGoalMapper.listByUser(eq(1L), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of());
+        when(reportMapper.listByUser(eq(1L), any(), any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(List.of());
 
         assertThrows(ApiException.class, () -> service.distill(1L, null));

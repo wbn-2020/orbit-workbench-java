@@ -134,12 +134,13 @@ class WorkbenchServiceTest {
 
         var pipeline = service.summary(1L).pipeline();
 
+        // 后端按管线顺序返回（账户→面试→失败重试→蒸馏→记忆）；分级排序由前端兜底
         assertEquals("connection", pipeline.get(0).key());
         assertEquals("BLOCK", pipeline.get(0).status());
-        assertEquals(java.util.List.of("report-retry", "distill", "memory"),
-                pipeline.subList(1, 4).stream().map(r -> r.key()).toList());
-        assertEquals("STALE", pipeline.get(4).status());
-        assertEquals("interview-cadence", pipeline.get(4).key());
+        assertEquals(java.util.List.of("connection", "interview-cadence", "report-retry", "distill", "memory"),
+                pipeline.stream().map(r -> r.key()).toList());
+        assertEquals("STALE", pipeline.get(1).status());
+        assertEquals("ACTION", pipeline.get(2).status());
     }
 
     @Test

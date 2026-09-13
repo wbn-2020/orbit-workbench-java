@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
@@ -51,12 +52,15 @@ class CredentialCipherTest {
         CredentialCipher.EncryptedCredential encrypted =
                 cipherWithKey(13, 1).encrypt("credential-value");
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class,
+        // 主密钥更换后解密失败是可恢复的用户状态（重录 Key），必须 409 引导而非 500。
+        ApiException exception = assertThrows(ApiException.class,
                 () -> cipherWithKey(14, 1).decrypt(
                         encrypted.ciphertext(), encrypted.iv(), encrypted.keyVersion()));
 
         assertAll(
-                () -> assertEquals("凭据解密失败", exception.getMessage()),
+                () -> assertEquals(HttpStatus.CONFLICT, exception.getStatus()),
+                () -> assertEquals(ErrorCode.STATE_CONFLICT, exception.getErrorCode()),
+                () -> assertTrue(exception.getMessage().contains("重新保存")),
                 () -> assertNotNull(exception.getCause()));
     }
 
