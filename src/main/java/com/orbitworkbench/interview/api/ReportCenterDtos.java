@@ -32,7 +32,9 @@ public final class ReportCenterDtos {
             int retryCount,
             Instant generatedAt,
             Instant scheduledAt,
-            Instant createdAt
+            Instant createdAt,
+            String failureSummary,
+            String failureNextStep
     ) {}
 
     public record ReportListResponse(

@@ -157,14 +157,19 @@ public class ReportCenterService {
         Integer average = dimensions.isEmpty()
                 ? null
                 : (int) Math.round(dimensions.values().stream().mapToInt(Integer::intValue).average().orElse(0));
+        int retryCount = row.getRetryCount() == null ? 0 : row.getRetryCount();
+        var advice = com.orbitworkbench.interview.domain.ReportFailureAdvisor
+                .advise(row.getFailureReason(), retryCount);
         return new ReportListItem(
                 row.getReportId(), row.getSessionId(), row.getSessionTitle(), row.getTopicMode(),
                 row.getForm(), row.getRound(), row.getTargetRole(), row.getTargetExperienceBand(),
                 row.getInterviewerId(), row.getInterviewerName(), row.getSessionStatus(),
                 row.getReportStatus(), row.getTotalScore(), dimensions.size(), average,
                 row.getHiringRecommendation(), row.getScoringRuleVersion(), row.getFailureReason(),
-                row.getRetryCount() == null ? 0 : row.getRetryCount(), row.getGeneratedAt(),
-                row.getScheduledAt(), row.getCreatedAt() == null ? Instant.EPOCH : row.getCreatedAt());
+                retryCount, row.getGeneratedAt(),
+                row.getScheduledAt(), row.getCreatedAt() == null ? Instant.EPOCH : row.getCreatedAt(),
+                advice == null ? null : advice.summary(),
+                advice == null ? null : advice.nextStep());
     }
 
     /**

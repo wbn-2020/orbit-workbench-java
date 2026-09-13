@@ -234,9 +234,15 @@ public final class InterviewDtos {
             String studySuggestionsJson,
             String failureReason,
             Integer retryCount,
-            Instant generatedAt
+            Instant generatedAt,
+            String failureSummary,
+            String failureNextStep
     ) {
         public static ReportResponse from(InterviewReportRecord record) {
+            com.orbitworkbench.interview.domain.ReportFailureAdvisor.Advice advice =
+                    com.orbitworkbench.interview.domain.ReportFailureAdvisor.advise(
+                            record.getFailureReason(),
+                            record.getRetryCount() == null ? 0 : record.getRetryCount());
             return new ReportResponse(
                     record.getId(),
                     record.getSessionId(),
@@ -252,7 +258,9 @@ public final class InterviewDtos {
                     record.getStudySuggestionsJson(),
                     record.getFailureReason(),
                     record.getRetryCount(),
-                    record.getGeneratedAt());
+                    record.getGeneratedAt(),
+                    advice == null ? null : advice.summary(),
+                    advice == null ? null : advice.nextStep());
         }
     }
 
