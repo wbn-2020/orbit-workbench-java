@@ -12,6 +12,7 @@
         <result property="confirmationStatus" column="confirmation_status"/>
         <result property="confidence" column="confidence"/>
         <result property="confirmedAt" column="confirmed_at"/>
+        <result property="lastSeenAt" column="last_seen_at"/>
         <result property="archivedReason" column="archived_reason"/>
         <result property="sourceHint" column="source_hint"/>
         <result property="createdAt" column="created_at"/>
@@ -20,18 +21,21 @@
 
     <sql id="allColumns">
         id, user_id, fact_type, title, content, source, confirmation_status,
-        confidence, confirmed_at, archived_reason, source_hint, created_at, updated_at
+        confidence, confirmed_at, last_seen_at, archived_reason, source_hint,
+        created_at, updated_at
     </sql>
 
     <insert id="insert" parameterType="com.orbitworkbench.userfact.domain.UserFactRecord"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_fact(
             user_id, fact_type, title, content, source, confirmation_status,
-            confidence, confirmed_at, archived_reason, source_hint, created_at, updated_at
+            confidence, confirmed_at, last_seen_at, archived_reason, source_hint,
+            created_at, updated_at
         )
         VALUES(
             #{userId}, #{factType}, #{title}, #{content}, #{source}, #{confirmationStatus},
-            #{confidence}, #{confirmedAt}, #{archivedReason}, #{sourceHint}, #{createdAt}, #{updatedAt}
+            #{confidence}, #{confirmedAt}, #{lastSeenAt}, #{archivedReason}, #{sourceHint},
+            #{createdAt}, #{updatedAt}
         )
     </insert>
 
@@ -56,7 +60,7 @@
         SELECT <include refid="allColumns"/>
         FROM user_fact
         WHERE user_id = #{userId} AND confirmation_status = 'CONFIRMED'
-        ORDER BY COALESCE(confirmed_at, updated_at) DESC, id DESC
+        ORDER BY COALESCE(last_seen_at, confirmed_at, updated_at) DESC, id DESC
         LIMIT #{limit}
     </select>
 
@@ -67,6 +71,7 @@
             content = #{content},
             confirmation_status = 'CONFIRMED',
             confirmed_at = #{confirmedAt},
+            last_seen_at = #{confirmedAt},
             updated_at = #{updatedAt}
         WHERE id = #{id}
           AND user_id = #{userId}
@@ -81,6 +86,17 @@
         WHERE id = #{id}
           AND user_id = #{userId}
           AND confirmation_status != 'ARCHIVED'
+    </update>
+
+    <!-- 复查：用户确认这条事实「仍然成立」，把 last_seen_at 推到当下。
+         只对 CONFIRMED 生效——候选池与已归档没有「时效」可言。 -->
+    <update id="reaffirm">
+        UPDATE user_fact
+        SET last_seen_at = #{seenAt},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND confirmation_status = 'CONFIRMED'
     </update>
 
     <select id="countAnalyzed" resultType="long">

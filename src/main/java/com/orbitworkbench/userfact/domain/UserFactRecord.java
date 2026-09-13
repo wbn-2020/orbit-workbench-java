@@ -14,6 +14,11 @@ public class UserFactRecord {
     private UserFactStatus confirmationStatus;
     private Integer confidence;
     private Instant confirmedAt;
+    /**
+     * 用户最后一次确认「这条事实仍然成立」的时间（V43）。
+     * 刻意不由注入更新——否则注入越频繁越显新鲜，时效衰减永远不会触发。
+     */
+    private Instant lastSeenAt;
     private String archivedReason;
     private String sourceHint;
     private Instant createdAt;
@@ -39,6 +44,8 @@ public class UserFactRecord {
     public void setConfidence(Integer confidence) { this.confidence = confidence; }
     public Instant getConfirmedAt() { return confirmedAt; }
     public void setConfirmedAt(Instant confirmedAt) { this.confirmedAt = confirmedAt; }
+    public Instant getLastSeenAt() { return lastSeenAt; }
+    public void setLastSeenAt(Instant lastSeenAt) { this.lastSeenAt = lastSeenAt; }
     public String getArchivedReason() { return archivedReason; }
     public void setArchivedReason(String archivedReason) { this.archivedReason = archivedReason; }
     public String getSourceHint() { return sourceHint; }

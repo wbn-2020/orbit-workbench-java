@@ -59,6 +59,12 @@ public class UserFactController {
         return service.archive(userId(authentication), id);
     }
 
+    /** 复查：确认这条已确认事实「仍然成立」，刷新其时效（V43）。 */
+    @PostMapping("/{id}/reaffirm")
+    public UserFactResponse reaffirm(@PathVariable Long id, Authentication authentication) {
+        return service.reaffirm(userId(authentication), id);
+    }
+
     private Long userId(Authentication authentication) {
         return ((OrbitUserDetails) authentication.getPrincipal()).userId();
     }

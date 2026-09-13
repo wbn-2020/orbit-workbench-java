@@ -19,6 +19,7 @@ import com.orbitworkbench.userfact.api.UserFactDtos.CreateUserFactRequest;
 import com.orbitworkbench.userfact.api.UserFactDtos.DistillResultResponse;
 import com.orbitworkbench.userfact.api.UserFactDtos.UserFactListResponse;
 import com.orbitworkbench.userfact.api.UserFactDtos.UserFactResponse;
+import com.orbitworkbench.userfact.api.UserFactFreshness;
 import com.orbitworkbench.userfact.domain.UserFactRecord;
 import com.orbitworkbench.userfact.domain.UserFactSource;
 import com.orbitworkbench.userfact.domain.UserFactStatus;
@@ -112,10 +113,30 @@ public class UserFactService {
         record.setConfirmationStatus(UserFactStatus.CONFIRMED);
         record.setConfidence(clampConfidence(request.confidence(), 100));
         record.setConfirmedAt(now);
+        // last_seen_at 与 confirmed_at 同为「此刻由用户确认」——确认即首见
+        record.setLastSeenAt(now);
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
         factMapper.insert(record);
         return UserFactResponse.from(factMapper.findByIdAndUser(record.getId(), userId));
+    }
+
+    /**
+     * 复查（V43）：用户确认这条已确认事实「仍然成立」，把 last_seen_at 推到当下。
+     * 与「确认候选」不同——它不改内容，只刷新时效，所以不需要重新编辑。
+     */
+    @Transactional
+    public UserFactResponse reaffirm(Long userId, Long factId) {
+        UserFactRecord record = requireOwned(userId, factId);
+        if (record.getConfirmationStatus() != UserFactStatus.CONFIRMED) {
+            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
+                    "只有已确认的画像事实需要复查");
+        }
+        Instant now = Instant.now();
+        if (factMapper.reaffirm(factId, userId, now, now) != 1) {
+            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT, "事实状态已变化");
+        }
+        return UserFactResponse.from(factMapper.findByIdAndUser(factId, userId));
     }
 
     @Transactional
@@ -175,10 +196,16 @@ public class UserFactService {
         }
         StringBuilder context = new StringBuilder("候选人已确认的画像事实（来自其个人记忆层）：\n");
         for (UserFactRecord fact : facts) {
+            // 陈旧事实照常注入（用户没删就说明还有参考价值），但必须带上时效标注：
+            // 三个月前确认的「Java 仅具备工作能力」不该被模型当成今天的水平。
             context.append("- [").append(fact.getFactType()).append("] ")
                     .append(AiOutputCleaner.truncate(
-                            fact.getTitle() + "：" + fact.getContent(), INJECT_ITEM_MAX))
-                    .append('\n');
+                            fact.getTitle() + "：" + fact.getContent(), INJECT_ITEM_MAX));
+            String note = UserFactFreshness.injectNote(fact);
+            if (!note.isEmpty()) {
+                context.append(note);
+            }
+            context.append('\n');
         }
         return context.toString();
     }

@@ -215,6 +215,21 @@
         ORDER BY calls DESC, usage_key ASC
     </select>
 
+    <!-- 保留策略清理（V43）：只删已结算行；RUNNING 还没有结果，删了就永远收不了尾。 -->
+    <delete id="purgeAuditsBefore">
+        DELETE FROM ai_call_audit
+        WHERE user_id = #{userId}
+          AND status &lt;&gt; 'RUNNING'
+          AND created_at &lt; #{cutoff}
+    </delete>
+
+    <select id="findAuditById" resultMap="AuditMap">
+        SELECT <include refid="AuditColumns"/>
+        FROM ai_call_audit a
+        LEFT JOIN ai_connection c ON c.id = a.used_connection_id
+        WHERE a.id = #{id} AND a.user_id = #{userId}
+    </select>
+
     <select id="listAudits" resultMap="AuditMap">
         SELECT <include refid="AuditColumns"/>
         FROM ai_call_audit a

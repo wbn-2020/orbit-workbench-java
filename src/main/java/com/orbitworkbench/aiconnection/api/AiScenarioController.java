@@ -60,6 +60,13 @@ public class AiScenarioController {
         return service.audits(userId(authentication), target, page, size);
     }
 
+    /** 单次调用下钻（V43）。 */
+    @GetMapping("/audits/{id}")
+    public com.orbitworkbench.aiconnection.api.AiScenarioDtos.CallAuditDetailResponse auditDetail(
+            @PathVariable Long id, Authentication authentication) {
+        return service.auditDetail(userId(authentication), id);
+    }
+
     private AiScenario parse(String scenario) {
         return AiScenario.parse(scenario).orElseThrow(() -> new ApiException(
                 HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED,

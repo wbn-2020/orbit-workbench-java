@@ -12,6 +12,11 @@ public final class AiScenarioDtos {
     private AiScenarioDtos() {
     }
 
+    /** 场景码转中文标签；未知码原样返回，不吞掉信息。列表与详情共用。 */
+    private static String scenarioLabel(String code) {
+        return AiScenario.parse(code).map(AiScenario::label).orElse(code);
+    }
+
     public record UpsertRouteRequest(
             @NotNull(message = "必须选择主用账户") Long primaryConnectionId,
             Long backupConnectionId,
@@ -50,6 +55,47 @@ public final class AiScenarioDtos {
         }
     }
 
+    /**
+     * 单次调用下钻（V43）：列表列 + 落库的非敏感配置快照。
+     * 快照里带 primary/backup 的账户名、模型、联网结论与单价，
+     * 前端据此解释「这次为什么是这个结果」，不需要再查一遍连接表。
+     */
+    public record CallAuditDetailResponse(
+            Long id,
+            String scenario,
+            String scenarioLabel,
+            Long primaryConnectionId,
+            Long usedConnectionId,
+            String usedConnectionName,
+            boolean backupAttempted,
+            String status,
+            String errorCode,
+            Integer latencyMs,
+            int requestChars,
+            int responseChars,
+            Integer inputTokens,
+            Integer outputTokens,
+            Integer cachedInputTokens,
+            Integer reasoningOutputTokens,
+            java.math.BigDecimal costAmount,
+            /** 配置快照 JSON（路由/模型/联网结论/单价），非敏感；旧行可能为 null。 */
+            String configurationSnapshotJson,
+            Instant createdAt,
+            Instant finishedAt) {
+
+        public static CallAuditDetailResponse from(CallAuditRecord record) {
+            return new CallAuditDetailResponse(record.getId(), record.getScenarioCode(),
+                    AiScenarioDtos.scenarioLabel(record.getScenarioCode()), record.getPrimaryConnectionId(),
+                    record.getUsedConnectionId(), record.getUsedConnectionName(),
+                    record.isBackupAttempted(), record.getStatus(), record.getErrorCode(),
+                    record.getLatencyMs(), record.getRequestChars(), record.getResponseChars(),
+                    record.getInputTokens(), record.getOutputTokens(),
+                    record.getCachedInputTokens(), record.getReasoningOutputTokens(),
+                    record.getCostAmount(), record.getConfigurationSnapshotJson(),
+                    record.getCreatedAt(), record.getFinishedAt());
+        }
+    }
+
     public record CallAuditResponse(
             Long id,
             String scenario,
@@ -73,7 +119,7 @@ public final class AiScenarioDtos {
 
         public static CallAuditResponse from(CallAuditRecord record) {
             return new CallAuditResponse(record.getId(), record.getScenarioCode(),
-                    scenarioLabel(record.getScenarioCode()), record.getPrimaryConnectionId(),
+                    AiScenarioDtos.scenarioLabel(record.getScenarioCode()), record.getPrimaryConnectionId(),
                     record.getUsedConnectionId(), record.getUsedConnectionName(),
                     record.isBackupAttempted(), record.getStatus(), record.getErrorCode(),
                     record.getLatencyMs(), record.getRequestChars(), record.getResponseChars(),
@@ -81,10 +127,6 @@ public final class AiScenarioDtos {
                     record.getCachedInputTokens(), record.getReasoningOutputTokens(),
                     record.getCostAmount(),
                     record.getCreatedAt(), record.getFinishedAt());
-        }
-
-        private static String scenarioLabel(String code) {
-            return AiScenario.parse(code).map(AiScenario::label).orElse(code);
         }
     }
 }

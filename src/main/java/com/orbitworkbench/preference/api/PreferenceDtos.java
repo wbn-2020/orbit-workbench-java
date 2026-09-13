@@ -19,6 +19,11 @@ public final class PreferenceDtos {
             @NotNull Boolean notifyImportFailure,
             @NotNull Boolean notifyAiFailure,
             @NotBlank @Size(max = 64) String timezoneId,
+            // 保留期可选：null = 永久保留（默认）；非空时须 >= 7 天，避免配成 1 天连刚产生的账目都留不住
+            @jakarta.validation.constraints.Min(7) @jakarta.validation.constraints.Max(3650)
+            Integer auditRetentionDays,
+            @jakarta.validation.constraints.Min(7) @jakarta.validation.constraints.Max(3650)
+            Integer notificationRetentionDays,
             @NotNull @Min(1) Integer expectedVersion) {
     }
 
@@ -30,6 +35,8 @@ public final class PreferenceDtos {
             boolean notifyImportFailure,
             boolean notifyAiFailure,
             String timezoneId,
+            Integer auditRetentionDays,
+            Integer notificationRetentionDays,
             int version,
             Instant createdAt,
             Instant updatedAt) {
@@ -43,6 +50,8 @@ public final class PreferenceDtos {
                     record.isNotifyImportFailure(),
                     record.isNotifyAiFailure(),
                     record.getTimezoneId(),
+                    record.getAuditRetentionDays(),
+                    record.getNotificationRetentionDays(),
                     record.getVersion(),
                     record.getCreatedAt(),
                     record.getUpdatedAt());

@@ -10,6 +10,8 @@
         <result property="notifyImportFailure" column="notify_import_failure"/>
         <result property="notifyAiFailure" column="notify_ai_failure"/>
         <result property="timezoneId" column="timezone_id"/>
+        <result property="auditRetentionDays" column="audit_retention_days"/>
+        <result property="notificationRetentionDays" column="notification_retention_days"/>
         <result property="version" column="version"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
@@ -17,7 +19,8 @@
 
     <sql id="allColumns">
         user_id, notify_report_ready, notify_study_due, notify_interview,
-        notify_import_failure, notify_ai_failure, timezone_id, version,
+        notify_import_failure, notify_ai_failure, timezone_id,
+        audit_retention_days, notification_retention_days, version,
         created_at, updated_at
     </sql>
 
@@ -32,6 +35,14 @@
         WHERE user_id = #{userId}
     </select>
 
+    <!-- 保留策略扫描：只回传至少配了一项保留期的用户；全 null 的用户没有任何要清理的。 -->
+    <select id="listRetentionPolicies" resultMap="UserPreferenceMap">
+        SELECT <include refid="allColumns"/>
+        FROM user_preference
+        WHERE audit_retention_days IS NOT NULL
+           OR notification_retention_days IS NOT NULL
+    </select>
+
     <update id="update">
         UPDATE user_preference
         SET notify_report_ready = #{record.notifyReportReady},
@@ -40,6 +51,8 @@
             notify_import_failure = #{record.notifyImportFailure},
             notify_ai_failure = #{record.notifyAiFailure},
             timezone_id = #{record.timezoneId},
+            audit_retention_days = #{record.auditRetentionDays},
+            notification_retention_days = #{record.notificationRetentionDays},
             version = version + 1,
             updated_at = #{record.updatedAt}
         WHERE user_id = #{record.userId}

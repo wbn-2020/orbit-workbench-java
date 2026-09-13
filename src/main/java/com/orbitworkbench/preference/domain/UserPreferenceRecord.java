@@ -11,6 +11,10 @@ public class UserPreferenceRecord {
     private boolean notifyImportFailure;
     private boolean notifyAiFailure;
     private String timezoneId;
+    /** 审计/用量明细保留天数（V43）；null = 永久保留（默认，不悄悄删用户数据）。 */
+    private Integer auditRetentionDays;
+    /** 通知保留天数（V43）；null = 永久保留。 */
+    private Integer notificationRetentionDays;
     private int version;
     private Instant createdAt;
     private Instant updatedAt;
@@ -65,6 +69,22 @@ public class UserPreferenceRecord {
 
     public String getTimezoneId() {
         return timezoneId;
+    }
+
+    public Integer getAuditRetentionDays() {
+        return auditRetentionDays;
+    }
+
+    public void setAuditRetentionDays(Integer auditRetentionDays) {
+        this.auditRetentionDays = auditRetentionDays;
+    }
+
+    public Integer getNotificationRetentionDays() {
+        return notificationRetentionDays;
+    }
+
+    public void setNotificationRetentionDays(Integer notificationRetentionDays) {
+        this.notificationRetentionDays = notificationRetentionDays;
     }
 
     public void setTimezoneId(String timezoneId) {

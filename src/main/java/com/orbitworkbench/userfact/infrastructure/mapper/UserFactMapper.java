@@ -31,6 +31,12 @@ public interface UserFactMapper {
                 @Param("reason") String reason,
                 @Param("updatedAt") Instant updatedAt);
 
+    /** 复查（V43）：用户确认这条已确认事实「仍然成立」，把 last_seen_at 推到当下。 */
+    int reaffirm(@Param("id") Long id,
+                 @Param("userId") Long userId,
+                 @Param("seenAt") Instant seenAt,
+                 @Param("updatedAt") Instant updatedAt);
+
     /** 重复沉淀防御：当前 ANALYZED 候选数量。 */
     long countAnalyzed(@Param("userId") Long userId);
 

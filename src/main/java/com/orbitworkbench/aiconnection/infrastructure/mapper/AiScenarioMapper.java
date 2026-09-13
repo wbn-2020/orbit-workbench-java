@@ -73,4 +73,18 @@ public interface AiScenarioMapper {
     long countAudits(
             @Param("userId") Long userId,
             @Param("scenarioCode") String scenarioCode);
+
+    /** 单次调用下钻：按 id 取一行（含配置快照），必须带 user_id 归属过滤。 */
+    CallAuditRecord findAuditById(
+            @Param("id") Long id,
+            @Param("userId") Long userId);
+
+    /**
+     * 保留策略清理（V43）：删除该用户早于 cutoff 的已结算审计行。
+     * 只删 status != 'RUNNING'——正在跑的调用还没有结果，删了会留下无法收尾的孤儿。
+     * 返回删除行数。
+     */
+    int purgeAuditsBefore(
+            @Param("userId") Long userId,
+            @Param("cutoff") java.time.Instant cutoff);
 }

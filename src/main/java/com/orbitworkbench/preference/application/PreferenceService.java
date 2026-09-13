@@ -48,6 +48,8 @@ public class PreferenceService {
         current.setNotifyImportFailure(request.notifyImportFailure());
         current.setNotifyAiFailure(request.notifyAiFailure());
         current.setTimezoneId(request.timezoneId());
+        current.setAuditRetentionDays(request.auditRetentionDays());
+        current.setNotificationRetentionDays(request.notificationRetentionDays());
         current.setUpdatedAt(Instant.now());
 
         if (mapper.update(current, request.expectedVersion()) != 1) {

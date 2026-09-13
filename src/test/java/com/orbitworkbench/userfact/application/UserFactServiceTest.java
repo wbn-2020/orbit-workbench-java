@@ -1,6 +1,7 @@
 package com.orbitworkbench.userfact.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -152,6 +153,52 @@ class UserFactServiceTest {
         assertTrue(context.startsWith("候选人已确认的画像事实"));
         assertTrue(context.contains("[GOAL]"));
         assertTrue(context.contains("转 AI 方向"));
+    }
+
+    @Test
+    void reaffirmBumpsLastSeenForConfirmedFact() {
+        UserFactRecord confirmed = analyzedFact(12L);
+        confirmed.setConfirmationStatus(UserFactStatus.CONFIRMED);
+        when(factMapper.findByIdAndUser(12L, 1L)).thenReturn(confirmed);
+        when(factMapper.reaffirm(eq(12L), eq(1L), any(), any())).thenReturn(1);
+
+        service.reaffirm(1L, 12L);
+
+        verify(factMapper).reaffirm(eq(12L), eq(1L), any(), any());
+    }
+
+    @Test
+    void reaffirmRejectsNonConfirmedFact() {
+        UserFactRecord analyzed = analyzedFact(13L);
+        when(factMapper.findByIdAndUser(13L, 1L)).thenReturn(analyzed);
+
+        assertThrows(ApiException.class, () -> service.reaffirm(1L, 13L));
+        verify(factMapper, never()).reaffirm(any(), any(), any(), any());
+    }
+
+    @Test
+    void confirmedContextAnnotatesStaleFactsButNotFreshOnes() {
+        UserFactRecord stale = analyzedFact(20L);
+        stale.setConfirmationStatus(UserFactStatus.CONFIRMED);
+        stale.setTitle("Java 水平");
+        stale.setContent("仅具备工作能力");
+        stale.setConfirmedAt(Instant.now().minus(200, java.time.temporal.ChronoUnit.DAYS));
+        stale.setLastSeenAt(stale.getConfirmedAt());
+        UserFactRecord fresh = analyzedFact(21L);
+        fresh.setConfirmationStatus(UserFactStatus.CONFIRMED);
+        fresh.setTitle("近期目标");
+        fresh.setContent("准备跨端项目");
+        fresh.setConfirmedAt(Instant.now().minus(3, java.time.temporal.ChronoUnit.DAYS));
+        fresh.setLastSeenAt(fresh.getConfirmedAt());
+        when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of(stale, fresh));
+
+        String context = service.confirmedContext(1L);
+
+        assertTrue(context.contains("可能已过时"), "陈旧事实应带时效标注：" + context);
+        // 新鲜事实紧跟其后，不应被标注
+        int freshIdx = context.indexOf("近期目标");
+        String afterFresh = context.substring(freshIdx);
+        assertFalse(afterFresh.contains("可能已过时"), "新鲜事实不该被标注：" + afterFresh);
     }
 
     private static UserFactRecord analyzedFact(long id) {

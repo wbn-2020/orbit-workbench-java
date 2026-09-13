@@ -69,4 +69,11 @@
         SET read_at = #{readAt}
         WHERE user_id = #{userId} AND read_at IS NULL
     </update>
+
+    <!-- 保留策略清理（V43）：按创建时间删除该用户的旧通知。 -->
+    <delete id="purgeBefore">
+        DELETE FROM notification
+        WHERE user_id = #{userId}
+          AND created_at &lt; #{cutoff}
+    </delete>
 </mapper>

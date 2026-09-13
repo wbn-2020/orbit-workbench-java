@@ -1,6 +1,7 @@
 package com.orbitworkbench.aiconnection.application;
 
 import com.orbitworkbench.aiconnection.api.AiConnectionDtos.ConnectionResponse;
+import com.orbitworkbench.aiconnection.api.AiScenarioDtos.CallAuditDetailResponse;
 import com.orbitworkbench.aiconnection.api.AiScenarioDtos.CallAuditResponse;
 import com.orbitworkbench.aiconnection.api.AiScenarioDtos.ScenarioRouteResponse;
 import com.orbitworkbench.aiconnection.api.AiScenarioDtos.UpsertRouteRequest;
@@ -115,6 +116,17 @@ public class AiScenarioService {
                         (safePage - 1) * safeSize)
                 .stream().map(CallAuditResponse::from).toList();
         return new PageResult<>(items, safePage, safeSize, mapper.countAudits(userId, scenarioCode));
+    }
+
+    /** 单次调用下钻（V43）：按 id 取审计明细；不存在或不属于该用户都返回 404。 */
+    @Transactional(readOnly = true)
+    public CallAuditDetailResponse auditDetail(Long userId, Long auditId) {
+        com.orbitworkbench.aiconnection.domain.CallAuditRecord record =
+                mapper.findAuditById(auditId, userId);
+        if (record == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND, "调用记录不存在");
+        }
+        return CallAuditDetailResponse.from(record);
     }
 
     private ConnectionResponse firstEnabled() {

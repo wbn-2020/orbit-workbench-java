@@ -21,14 +21,27 @@ public final class UserFactDtos {
             String status,
             Integer confidence,
             Instant confirmedAt,
+            Instant lastSeenAt,
+            /** 距上次确认是否已超过时效阈值（后端判定，前端不重复实现规则）。 */
+            boolean stale,
+            /** 距上次确认的天数；从未确认（候选池）为 null。 */
+            Long staleDays,
             String archivedReason,
             Instant createdAt
     ) {
         public static UserFactResponse from(UserFactRecord record) {
+            return from(record, UserFactFreshness.STALE_AFTER_DAYS);
+        }
+
+        public static UserFactResponse from(UserFactRecord record, long staleAfterDays) {
+            Instant lastSeen = UserFactFreshness.lastSeen(record);
+            Long days = lastSeen == null ? null
+                    : UserFactFreshness.daysSince(lastSeen);
+            boolean stale = days != null && days >= staleAfterDays;
             return new UserFactResponse(record.getId(), record.getFactType(), record.getTitle(),
                     record.getContent(), record.getSource().name(), record.getConfirmationStatus().name(),
-                    record.getConfidence(), record.getConfirmedAt(), record.getArchivedReason(),
-                    record.getCreatedAt());
+                    record.getConfidence(), record.getConfirmedAt(), lastSeen, stale, days,
+                    record.getArchivedReason(), record.getCreatedAt());
         }
     }
 
