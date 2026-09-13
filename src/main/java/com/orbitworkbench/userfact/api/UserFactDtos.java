@@ -62,4 +62,16 @@ public final class UserFactDtos {
     public record UserFactListResponse(List<UserFactResponse> items) {}
 
     public record DistillResultResponse(List<UserFactResponse> suggestions, int skippedLowConfidence) {}
+
+    /** 画像编译快照（V44）：stale = 编译后事实集有新增/归档，注入已自动回退逐条模式。 */
+    public record DigestResponse(
+            Long id,
+            String digest,
+            int sourceCount,
+            String model,
+            Instant compiledAt,
+            boolean stale,
+            int factsAdded,
+            int factsRemoved
+    ) {}
 }

@@ -13,7 +13,8 @@ public enum AiScenario {
     INTERVIEW_REPORT("面试报告"),
     PROJECT_FACT("项目画像事实"),
     KNOWLEDGE_ANSWER("知识库问答"),
-    USER_FACT("用户画像沉淀");
+    USER_FACT("用户画像沉淀"),
+    PROFILE_DIGEST("画像编译");
 
     private static final List<AiScenario> ALL = List.of(values());
 

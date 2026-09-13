@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -52,12 +54,14 @@ class UserFactServiceTest {
     private InterviewReportMapper reportMapper;
     @Mock
     private AiScenarioExecutionService aiScenarioExecution;
+    @Mock
+    private ProfileDigestService profileDigestService;
 
     private UserFactService service;
 
     @BeforeEach
     void setUp() {
-        service = new UserFactService(factMapper, jobProfileMapper, workLogMapper,
+        service = new UserFactService(factMapper, profileDigestService, jobProfileMapper, workLogMapper,
                 knowledgeCardMapper, learningGoalMapper, reportMapper, aiScenarioExecution,
                 new ObjectMapper());
     }
@@ -153,6 +157,35 @@ class UserFactServiceTest {
         assertTrue(context.startsWith("候选人已确认的画像事实"));
         assertTrue(context.contains("[GOAL]"));
         assertTrue(context.contains("转 AI 方向"));
+    }
+
+    @Test
+    void confirmedContextPrefersFreshDigestOverPerFactListing() {
+        when(profileDigestService.freshDigestForInjection(1L))
+                .thenReturn("## 画像\nJava 后端转 AI 应用开发。");
+
+        String context = service.confirmedContext(1L);
+
+        assertTrue(context.startsWith("候选人画像快照"));
+        assertTrue(context.contains("Java 后端转 AI 应用开发"));
+        // 快照命中时不再读逐条事实
+        verify(factMapper, never()).listConfirmed(anyLong(), anyInt());
+    }
+
+    @Test
+    void confirmedContextFallsBackWhenDigestExpired() {
+        // freshDigestForInjection 默认返回 null（快照缺失/过期），走逐条模式
+        UserFactRecord fact = analyzedFact(2L);
+        fact.setFactType("CONTEXT");
+        fact.setTitle("在职");
+        fact.setContent("当前在一家做 SaaS 的公司做后端");
+        fact.setConfirmationStatus(UserFactStatus.CONFIRMED);
+        when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of(fact));
+
+        String context = service.confirmedContext(1L);
+
+        assertTrue(context.startsWith("候选人已确认的画像事实"));
+        assertTrue(context.contains("在职"));
     }
 
     @Test

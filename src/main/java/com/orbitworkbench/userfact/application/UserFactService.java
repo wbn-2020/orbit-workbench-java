@@ -67,6 +67,7 @@ public class UserFactService {
     private static final int INJECT_ITEM_MAX = 160;
 
     private final UserFactMapper factMapper;
+    private final ProfileDigestService profileDigestService;
     private final JobProfileMapper jobProfileMapper;
     private final WorkLogMapper workLogMapper;
     private final KnowledgeCardMapper knowledgeCardMapper;
@@ -76,6 +77,7 @@ public class UserFactService {
     private final ObjectMapper objectMapper;
 
     public UserFactService(UserFactMapper factMapper,
+                           ProfileDigestService profileDigestService,
                            JobProfileMapper jobProfileMapper,
                            WorkLogMapper workLogMapper,
                            KnowledgeCardMapper knowledgeCardMapper,
@@ -84,6 +86,7 @@ public class UserFactService {
                            AiScenarioExecutionService aiScenarioExecution,
                            ObjectMapper objectMapper) {
         this.factMapper = factMapper;
+        this.profileDigestService = profileDigestService;
         this.jobProfileMapper = jobProfileMapper;
         this.workLogMapper = workLogMapper;
         this.knowledgeCardMapper = knowledgeCardMapper;
@@ -187,9 +190,13 @@ public class UserFactService {
         return persistSuggestions(userId, output);
     }
 
-    /** 注入链路统一读取口：CONFIRMED 事实拼成紧凑上下文；无事实返回空串。 */
+    /** 注入链路统一读取口：优先用编译快照（V44），无快照或快照过期时逐条拼 CONFIRMED 事实。 */
     @Transactional(readOnly = true)
     public String confirmedContext(Long userId) {
+        String digest = profileDigestService.freshDigestForInjection(userId);
+        if (digest != null && !digest.isBlank()) {
+            return "候选人画像快照（由其个人记忆层编译，反映已确认事实）：\n" + digest + '\n';
+        }
         List<UserFactRecord> facts = factMapper.listConfirmed(userId, INJECT_LIMIT);
         if (facts.isEmpty()) {
             return "";
