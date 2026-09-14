@@ -47,4 +47,9 @@ public interface CraftNoteMapper {
                   @Param("userId") Long userId,
                   @Param("pinned") boolean pinned,
                   @Param("updatedAt") Instant updatedAt);
+
+    /** V50：练习任务完成回写——累加练习计数；仅 CONFIRMED 生效，归档套路静默跳过。 */
+    int markPracticed(@Param("id") Long id,
+                      @Param("userId") Long userId,
+                      @Param("practicedAt") Instant practicedAt);
 }

@@ -14,6 +14,8 @@
         <result property="confirmationStatus" column="confirmation_status"/>
         <result property="confidence" column="confidence"/>
         <result property="pinned" column="pinned"/>
+        <result property="practiceCount" column="practice_count"/>
+        <result property="lastPracticedAt" column="last_practiced_at"/>
         <result property="version" column="version"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
@@ -21,7 +23,8 @@
 
     <sql id="allColumns">
         id, user_id, category, title, when_to_use, content, tags_json, source,
-        confirmation_status, confidence, pinned, version, created_at, updated_at
+        confirmation_status, confidence, pinned, practice_count, last_practiced_at,
+        version, created_at, updated_at
     </sql>
 
     <insert id="insert" parameterType="com.orbitworkbench.craft.domain.CraftNoteRecord"
@@ -105,6 +108,16 @@
         UPDATE craft_note
         SET pinned = #{pinned},
             updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND confirmation_status = 'CONFIRMED'
+    </update>
+
+    <!-- V50：练习任务完成回写。只动练习计数、不动 updated_at——
+         练习是系统事件，不应把库排序（按内容更新时间）打乱；
+         练习时间戳由 last_practiced_at 单独承载。已归档套路不再计数。 -->
+    <update id="markPracticed">
+        UPDATE craft_note
+        SET practice_count = practice_count + 1,
+            last_practiced_at = #{practicedAt}
         WHERE id = #{id} AND user_id = #{userId} AND confirmation_status = 'CONFIRMED'
     </update>
 </mapper>

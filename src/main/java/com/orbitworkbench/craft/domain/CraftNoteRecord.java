@@ -20,6 +20,9 @@ public class CraftNoteRecord {
     private CraftStatus confirmationStatus;
     private Integer confidence;
     private boolean pinned;
+    /** V50：完成练习任务时累加；练熟（mastered）由服务层按阈值派生，不落独立状态。 */
+    private int practiceCount;
+    private Instant lastPracticedAt;
     private int version;
     private Instant createdAt;
     private Instant updatedAt;
@@ -48,6 +51,10 @@ public class CraftNoteRecord {
     public void setConfidence(Integer confidence) { this.confidence = confidence; }
     public boolean isPinned() { return pinned; }
     public void setPinned(boolean pinned) { this.pinned = pinned; }
+    public int getPracticeCount() { return practiceCount; }
+    public void setPracticeCount(int practiceCount) { this.practiceCount = practiceCount; }
+    public Instant getLastPracticedAt() { return lastPracticedAt; }
+    public void setLastPracticedAt(Instant lastPracticedAt) { this.lastPracticedAt = lastPracticedAt; }
     public int getVersion() { return version; }
     public void setVersion(int version) { this.version = version; }
     public Instant getCreatedAt() { return createdAt; }

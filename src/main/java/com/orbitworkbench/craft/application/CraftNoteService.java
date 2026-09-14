@@ -119,6 +119,15 @@ public class CraftNoteService {
         return record;
     }
 
+    /**
+     * V50：练习任务完成后的回写入口（由 StudyTaskService.complete 在同一事务内调用）。
+     * 套路可能已被归档，SQL 只对 CONFIRMED 生效——归档的套路不再计练习，静默跳过即可。
+     */
+    @Transactional
+    public void markPracticed(Long userId, Long craftId) {
+        craftMapper.markPracticed(craftId, userId, Instant.now());
+    }
+
     /** 手动录入：用户亲手写的套路即已确认，不进候选池。 */
     @Transactional
     public CraftNoteResponse createManual(Long userId, SaveCraftRequest request) {

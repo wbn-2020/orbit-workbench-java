@@ -169,7 +169,7 @@ public class WorkbenchService {
         if (unpracticedCrafts > 0) {
             checks.add(new PipelineCheck("craft", "ACTION",
                     unpracticedCrafts + " 条已确认方法论还没安排练习",
-                    "套路沉淀了就要练：转成练习任务后进入复习计划，形成「沉淀 → 练习」闭环。",
+                    "套路沉淀了就要练：转成练习任务、完成一次即算练熟，形成「沉淀 → 练习 → 练熟」闭环。",
                     "/crafts", "去安排"));
         }
         return List.copyOf(checks);

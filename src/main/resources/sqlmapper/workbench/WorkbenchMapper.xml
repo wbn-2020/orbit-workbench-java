@@ -93,12 +93,14 @@
         WHERE user_id = #{userId} AND confirmation_status = 'ANALYZED'
     </select>
 
-    <!-- V49：已确认套路里，还没有 CRAFT 来源练习任务的那些 -->
+    <!-- V49：已确认套路里，还没有 CRAFT 来源练习任务的那些。
+         V50 补充：practice_count = 0——练熟的套路不再催促（即使练习任务后来被删） -->
     <select id="countUnpracticedCrafts" resultType="long">
         SELECT COUNT(*)
         FROM craft_note c
         WHERE c.user_id = #{userId}
           AND c.confirmation_status = 'CONFIRMED'
+          AND c.practice_count = 0
           AND NOT EXISTS (
               SELECT 1 FROM study_task t
               WHERE t.user_id = c.user_id

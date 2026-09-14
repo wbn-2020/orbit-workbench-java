@@ -285,4 +285,43 @@ class StudyTaskServiceTest {
         assertThrows(ApiException.class, () -> service.generateFromCraft(7L, 6L));
         verify(mapper, never()).insert(any(StudyTaskRecord.class));
     }
+
+    // ---- V50：练习完成回写 ----
+
+    @Test
+    void completeCraftTaskWritesBackPracticeCount() {
+        StudyTaskRecord record = task(StudyTaskStatus.PLANNED);
+        record.setSourceType(StudyTaskSource.CRAFT);
+        record.setSourceId(5L);
+        when(mapper.findById(31L)).thenReturn(record);
+        when(mapper.updateStatus(eq(31L), eq(7L), eq(StudyTaskStatus.PLANNED),
+                eq(StudyTaskStatus.COMPLETED), isNull(), any())).thenReturn(1);
+
+        service.complete(7L, 31L);
+
+        verify(craftNoteService).markPracticed(7L, 5L);
+    }
+
+    @Test
+    void completeManualTaskDoesNotTouchCrafts() {
+        StudyTaskRecord record = task(StudyTaskStatus.PLANNED);
+        when(mapper.findById(31L)).thenReturn(record);
+        when(mapper.updateStatus(eq(31L), eq(7L), eq(StudyTaskStatus.PLANNED),
+                eq(StudyTaskStatus.COMPLETED), isNull(), any())).thenReturn(1);
+
+        service.complete(7L, 31L);
+
+        verify(craftNoteService, never()).markPracticed(any(), any());
+    }
+
+    @Test
+    void rejectedCompleteDoesNotWriteBack() {
+        StudyTaskRecord skipped = task(StudyTaskStatus.SKIPPED);
+        skipped.setSourceType(StudyTaskSource.CRAFT);
+        skipped.setSourceId(5L);
+        when(mapper.findById(31L)).thenReturn(skipped);
+
+        assertThrows(ApiException.class, () -> service.complete(7L, 31L));
+        verify(craftNoteService, never()).markPracticed(any(), any());
+    }
 }

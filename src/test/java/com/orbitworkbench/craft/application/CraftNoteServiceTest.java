@@ -170,4 +170,27 @@ class CraftNoteServiceTest {
         assertEquals("STORY", items.get(0).category());
         assertTrue(items.get(0).tags().contains("面试"));
     }
+
+    // ---- V50：练习完成回写 ----
+
+    @Test
+    void markPracticedDelegatesToMapperWithOwnership() {
+        service.markPracticed(1L, 9L);
+        verify(craftMapper).markPracticed(eq(9L), eq(1L), any());
+    }
+
+    @Test
+    void listDerivesMasteredFromPracticeCount() {
+        CraftNoteRecord practiced = confirmed(2L);
+        practiced.setPracticeCount(1);
+        practiced.setLastPracticedAt(java.time.Instant.now());
+        when(craftMapper.listByUser(1L)).thenReturn(List.of(confirmed(1L), practiced));
+
+        List<CraftNoteResponse> items = service.list(1L);
+
+        assertEquals(0, items.get(0).practiceCount());
+        assertTrue(!items.get(0).mastered());
+        assertEquals(1, items.get(1).practiceCount());
+        assertTrue(items.get(1).mastered());
+    }
 }

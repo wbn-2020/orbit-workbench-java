@@ -82,6 +82,11 @@ public class StudyTaskService {
             throw conflict("仅计划中、已延期或进行中的任务可以完成：当前 " + record.getStatus());
         }
         updateStatus(record, StudyTaskStatus.COMPLETED, null);
+        // V50：练习任务完成 → 回写套路的练习计数。状态机保证同一任务只能完成一次，
+        // 因此计数不会被重复触发；任务对应套路若已归档，markPracticed 自然 0 行。
+        if (record.getSourceType() == StudyTaskSource.CRAFT && record.getSourceId() != null) {
+            craftNoteService.markPracticed(userId, record.getSourceId());
+        }
         return TaskResponse.from(reload(taskId));
     }
 
