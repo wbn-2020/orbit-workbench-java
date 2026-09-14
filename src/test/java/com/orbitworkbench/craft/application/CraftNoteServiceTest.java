@@ -40,6 +40,7 @@ import org.mockito.quality.Strictness;
 class CraftNoteServiceTest {
 
     @Mock private CraftNoteMapper craftMapper;
+    @Mock private com.orbitworkbench.studyplan.infrastructure.mapper.StudyTaskMapper studyTaskMapper;
     @Mock private JobProfileMapper jobProfileMapper;
     @Mock private WorkLogMapper workLogMapper;
     @Mock private KnowledgeCardMapper knowledgeCardMapper;
@@ -52,7 +53,7 @@ class CraftNoteServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new CraftNoteService(craftMapper, jobProfileMapper, workLogMapper,
+        service = new CraftNoteService(craftMapper, studyTaskMapper, jobProfileMapper, workLogMapper,
                 knowledgeCardMapper, learningGoalMapper, reportMapper, userFactMapper,
                 aiScenarioExecution, new ObjectMapper());
     }

@@ -24,9 +24,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class CraftNoteController {
 
     private final CraftNoteService service;
+    private final com.orbitworkbench.studyplan.application.StudyTaskService studyTaskService;
 
-    public CraftNoteController(CraftNoteService service) {
+    public CraftNoteController(CraftNoteService service,
+                               com.orbitworkbench.studyplan.application.StudyTaskService studyTaskService) {
         this.service = service;
+        this.studyTaskService = studyTaskService;
     }
 
     @GetMapping
@@ -71,6 +74,17 @@ public class CraftNoteController {
     public DistillCraftResponse distill(@RequestParam(required = false) Long connectionId,
                                         Authentication authentication) {
         return new DistillCraftResponse(service.distill(userId(authentication), connectionId));
+    }
+
+    /**
+     * V49：把这条已确认套路转成复习计划里的练习任务（幂等，重复点击不会重复建）。
+     * 返回 created=0 表示该套路已有练习任务。
+     */
+    @PostMapping("/{id}/practice-task")
+    public java.util.Map<String, Object> createPracticeTask(@PathVariable Long id,
+                                                            Authentication authentication) {
+        int created = studyTaskService.generateFromCraft(userId(authentication), id);
+        return java.util.Map.of("created", created);
     }
 
     private Long userId(Authentication authentication) {

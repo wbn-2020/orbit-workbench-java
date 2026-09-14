@@ -37,6 +37,9 @@ public interface StudyTaskMapper {
             @Param("id") Long id,
             @Param("userId") Long userId);
 
+    /** V49：已有练习任务的套路 id 集合（用于本事库回显「已在练习计划」）。 */
+    List<Long> listCraftIdsWithPracticeTask(@Param("userId") Long userId);
+
     int countBySourceTitle(
             @Param("userId") Long userId,
             @Param("sourceType") StudyTaskSource sourceType,

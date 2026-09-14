@@ -45,4 +45,7 @@ public interface WorkbenchMapper {
 
     /** 待确认的用户画像建议数。 */
     long countPendingUserFacts(@Param("userId") Long userId);
+
+    /** V49：已确认但还没有对应练习任务的套路数（方法论 → 练习闭环缺口）。 */
+    long countUnpracticedCrafts(@Param("userId") Long userId);
 }

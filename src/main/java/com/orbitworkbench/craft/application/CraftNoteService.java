@@ -65,6 +65,7 @@ public class CraftNoteService {
     static final int MAX_TAG_CHARS = 64;
 
     private final CraftNoteMapper craftMapper;
+    private final com.orbitworkbench.studyplan.infrastructure.mapper.StudyTaskMapper studyTaskMapper;
     private final JobProfileMapper jobProfileMapper;
     private final WorkLogMapper workLogMapper;
     private final KnowledgeCardMapper knowledgeCardMapper;
@@ -75,6 +76,7 @@ public class CraftNoteService {
     private final ObjectMapper objectMapper;
 
     public CraftNoteService(CraftNoteMapper craftMapper,
+                            com.orbitworkbench.studyplan.infrastructure.mapper.StudyTaskMapper studyTaskMapper,
                             JobProfileMapper jobProfileMapper,
                             WorkLogMapper workLogMapper,
                             KnowledgeCardMapper knowledgeCardMapper,
@@ -84,6 +86,7 @@ public class CraftNoteService {
                             AiScenarioExecutionService aiScenarioExecution,
                             ObjectMapper objectMapper) {
         this.craftMapper = craftMapper;
+        this.studyTaskMapper = studyTaskMapper;
         this.jobProfileMapper = jobProfileMapper;
         this.workLogMapper = workLogMapper;
         this.knowledgeCardMapper = knowledgeCardMapper;
@@ -96,9 +99,24 @@ public class CraftNoteService {
 
     @Transactional(readOnly = true)
     public List<CraftNoteResponse> list(Long userId) {
+        // V49：回显「已在练习计划」——用真实任务存在性派生，不在前端猜
+        Set<Long> practiced = new HashSet<>(
+                studyTaskMapper.listCraftIdsWithPracticeTask(userId));
         return craftMapper.listByUser(userId).stream()
-                .map(record -> CraftNoteResponse.from(record, parseTags(record.getTagsJson())))
+                .map(record -> CraftNoteResponse.from(record, parseTags(record.getTagsJson()),
+                        practiced.contains(record.getId())))
                 .toList();
+    }
+
+    /** V49：把已确认套路转成练习任务时的读取口（只有 CONFIRMED 值得练）。 */
+    @Transactional(readOnly = true)
+    public CraftNoteRecord requireConfirmed(Long userId, Long id) {
+        CraftNoteRecord record = requireOwned(userId, id);
+        if (record.getConfirmationStatus() != CraftStatus.CONFIRMED) {
+            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
+                    "只有已确认的套路可以转成练习");
+        }
+        return record;
     }
 
     /** 手动录入：用户亲手写的套路即已确认，不进候选池。 */

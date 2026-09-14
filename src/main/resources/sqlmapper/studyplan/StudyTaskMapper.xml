@@ -97,6 +97,14 @@
         WHERE id = #{id} AND user_id = #{userId}
     </delete>
 
+    <select id="listCraftIdsWithPracticeTask" resultType="long">
+        SELECT DISTINCT source_id
+        FROM study_task
+        WHERE user_id = #{userId}
+          AND source_type = 'CRAFT'
+          AND source_id IS NOT NULL
+    </select>
+
     <select id="countBySourceTitle" resultType="int">
         SELECT COUNT(*) FROM study_task
         WHERE user_id = #{userId}

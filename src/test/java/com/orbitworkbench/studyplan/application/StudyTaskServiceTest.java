@@ -3,6 +3,7 @@ package com.orbitworkbench.studyplan.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
@@ -37,11 +38,14 @@ class StudyTaskServiceTest {
     @Mock
     private com.orbitworkbench.interview.application.InterviewReportService reportService;
 
+    @Mock
+    private com.orbitworkbench.craft.application.CraftNoteService craftNoteService;
+
     private StudyTaskService service;
 
     @BeforeEach
     void setUp() {
-        service = new StudyTaskService(mapper, reportService);
+        service = new StudyTaskService(mapper, reportService, craftNoteService);
     }
 
     @Test
@@ -226,5 +230,59 @@ class StudyTaskServiceTest {
                 "HIGH",
                 30,
                 LocalDate.of(2026, 9, 1));
+    }
+
+    // ---- V49：方法论 → 练习任务 ----
+
+    private static com.orbitworkbench.craft.domain.CraftNoteRecord confirmedCraft(long id) {
+        com.orbitworkbench.craft.domain.CraftNoteRecord craft =
+                new com.orbitworkbench.craft.domain.CraftNoteRecord();
+        craft.setId(id);
+        craft.setUserId(7L);
+        craft.setCategory("PLAYBOOK");
+        craft.setTitle("并发问题五步排查法");
+        craft.setWhenToUse("排查并发异常时");
+        craft.setContent("1. …");
+        craft.setSource(com.orbitworkbench.craft.domain.CraftSource.USER_ENTERED);
+        craft.setConfirmationStatus(com.orbitworkbench.craft.domain.CraftStatus.CONFIRMED);
+        return craft;
+    }
+
+    @Test
+    void generateFromCraftCreatesPracticeTaskOnce() {
+        when(craftNoteService.requireConfirmed(7L, 5L)).thenReturn(confirmedCraft(5L));
+        when(mapper.countBySourceTitle(eq(7L), eq(StudyTaskSource.CRAFT), eq(5L), anyString()))
+                .thenReturn(0);
+
+        int created = service.generateFromCraft(7L, 5L);
+
+        assertEquals(1, created);
+        ArgumentCaptor<StudyTaskRecord> saved = ArgumentCaptor.forClass(StudyTaskRecord.class);
+        verify(mapper).insert(saved.capture());
+        assertEquals(StudyTaskSource.CRAFT, saved.getValue().getSourceType());
+        assertEquals(5L, saved.getValue().getSourceId());
+        assertEquals("练习：并发问题五步排查法", saved.getValue().getTitle());
+        assertEquals(StudyTaskStatus.PLANNED, saved.getValue().getStatus());
+    }
+
+    @Test
+    void generateFromCraftIsIdempotentByTitle() {
+        when(craftNoteService.requireConfirmed(7L, 5L)).thenReturn(confirmedCraft(5L));
+        when(mapper.countBySourceTitle(eq(7L), eq(StudyTaskSource.CRAFT), eq(5L), anyString()))
+                .thenReturn(1);
+
+        assertEquals(0, service.generateFromCraft(7L, 5L));
+        verify(mapper, never()).insert(any(StudyTaskRecord.class));
+    }
+
+    @Test
+    void generateFromCraftRejectsUnconfirmed() {
+        // 只有 CONFIRMED 能转练习：候选池不是正式内容，requireConfirmed 会抛
+        when(craftNoteService.requireConfirmed(7L, 6L)).thenThrow(
+                new ApiException(org.springframework.http.HttpStatus.CONFLICT,
+                        com.orbitworkbench.shared.api.ErrorCode.STATE_CONFLICT, "只有已确认的套路可以转成练习"));
+
+        assertThrows(ApiException.class, () -> service.generateFromCraft(7L, 6L));
+        verify(mapper, never()).insert(any(StudyTaskRecord.class));
     }
 }

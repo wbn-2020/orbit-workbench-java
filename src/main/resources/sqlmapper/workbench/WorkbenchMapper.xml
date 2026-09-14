@@ -92,4 +92,18 @@
         FROM user_fact
         WHERE user_id = #{userId} AND confirmation_status = 'ANALYZED'
     </select>
+
+    <!-- V49：已确认套路里，还没有 CRAFT 来源练习任务的那些 -->
+    <select id="countUnpracticedCrafts" resultType="long">
+        SELECT COUNT(*)
+        FROM craft_note c
+        WHERE c.user_id = #{userId}
+          AND c.confirmation_status = 'CONFIRMED'
+          AND NOT EXISTS (
+              SELECT 1 FROM study_task t
+              WHERE t.user_id = c.user_id
+                AND t.source_type = 'CRAFT'
+                AND t.source_id = c.id
+          )
+    </select>
 </mapper>

@@ -165,6 +165,13 @@ public class WorkbenchService {
                     "把技能缺口转成目标与复习计划，形成「感知 → 学习」闭环。",
                     "/learning-update", "立目标"));
         }
+        long unpracticedCrafts = mapper.countUnpracticedCrafts(userId);
+        if (unpracticedCrafts > 0) {
+            checks.add(new PipelineCheck("craft", "ACTION",
+                    unpracticedCrafts + " 条已确认方法论还没安排练习",
+                    "套路沉淀了就要练：转成练习任务后进入复习计划，形成「沉淀 → 练习」闭环。",
+                    "/crafts", "去安排"));
+        }
         return List.copyOf(checks);
     }
 

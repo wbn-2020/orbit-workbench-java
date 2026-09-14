@@ -28,10 +28,13 @@ public class StudyTaskService {
 
     private final StudyTaskMapper mapper;
     private final InterviewReportService reportService;
+    private final com.orbitworkbench.craft.application.CraftNoteService craftNoteService;
 
-    public StudyTaskService(StudyTaskMapper mapper, InterviewReportService reportService) {
+    public StudyTaskService(StudyTaskMapper mapper, InterviewReportService reportService,
+                            com.orbitworkbench.craft.application.CraftNoteService craftNoteService) {
         this.mapper = mapper;
         this.reportService = reportService;
+        this.craftNoteService = craftNoteService;
     }
 
     @Transactional
@@ -146,6 +149,39 @@ public class StudyTaskService {
             created += 1;
         }
         return created;
+    }
+
+    /**
+     * V49：把已确认方法论转成练习任务（方法论 → 练习闭环的出口）。
+     * 与报告生成同一幂等口径：来源 CRAFT + 套路 id + 标题去重，重复点击不会堆任务。
+     * 只对 CONFIRMED 套路生效（候选池不是正式内容）。
+     */
+    @Transactional
+    public int generateFromCraft(Long userId, Long craftId) {
+        com.orbitworkbench.craft.domain.CraftNoteRecord craft =
+                craftNoteService.requireConfirmed(userId, craftId);
+        String title = "练习：".concat(craft.getTitle());
+        if (title.length() > 300) {
+            title = title.substring(0, 300);
+        }
+        if (mapper.countBySourceTitle(userId, StudyTaskSource.CRAFT, craftId, title) > 0) {
+            return 0;
+        }
+        Instant now = Instant.now();
+        StudyTaskRecord record = new StudyTaskRecord();
+        record.setUserId(userId);
+        record.setSourceType(StudyTaskSource.CRAFT);
+        record.setSourceId(craftId);
+        record.setTitle(title);
+        record.setTopic(craft.getCategory());
+        record.setTaskType("CRAFT_PRACTICE");
+        record.setPriority(StudyTaskPriority.MEDIUM);
+        record.setStatus(StudyTaskStatus.PLANNED);
+        record.setManual(false);
+        record.setCreatedAt(now);
+        record.setUpdatedAt(now);
+        mapper.insert(record);
+        return 1;
     }
 
     private StudyTaskRecord ownedTask(Long userId, Long taskId) {

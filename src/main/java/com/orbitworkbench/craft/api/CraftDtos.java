@@ -23,14 +23,21 @@ public final class CraftDtos {
             String status,
             Integer confidence,
             boolean pinned,
+            /** V49：是否已有对应练习任务（由服务层按 study_task 派生）。 */
+            boolean practiced,
             Instant createdAt,
             Instant updatedAt
     ) {
         public static CraftNoteResponse from(CraftNoteRecord record, List<String> tags) {
+            return from(record, tags, false);
+        }
+
+        public static CraftNoteResponse from(CraftNoteRecord record, List<String> tags,
+                                             boolean practiced) {
             return new CraftNoteResponse(record.getId(), record.getCategory(), record.getTitle(),
                     record.getWhenToUse(), record.getContent(), tags, record.getSource().name(),
                     record.getConfirmationStatus().name(), record.getConfidence(),
-                    record.isPinned(), record.getCreatedAt(), record.getUpdatedAt());
+                    record.isPinned(), practiced, record.getCreatedAt(), record.getUpdatedAt());
         }
     }
 
