@@ -1,5 +1,7 @@
 package com.orbitworkbench.practice.api;
 
+import com.orbitworkbench.craft.api.CraftDtos.CraftForWrongAnswerResponse;
+import com.orbitworkbench.craft.application.WrongAnswerCraftService;
 import com.orbitworkbench.identity.application.OrbitUserDetails;
 import com.orbitworkbench.practice.api.PracticeDtos.AttemptRequest;
 import com.orbitworkbench.practice.api.PracticeDtos.ClassificationRequest;
@@ -27,9 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PracticeItemController {
 
     private final PracticeService service;
+    private final WrongAnswerCraftService craftSuggestionService;
 
-    public PracticeItemController(PracticeService service) {
+    public PracticeItemController(PracticeService service, WrongAnswerCraftService craftSuggestionService) {
         this.service = service;
+        this.craftSuggestionService = craftSuggestionService;
     }
 
     @GetMapping
@@ -51,6 +55,12 @@ public class PracticeItemController {
     @GetMapping("/{id}")
     public ItemDetailResponse detail(@PathVariable Long id, Authentication authentication) {
         return service.detail(userId(authentication), id);
+    }
+
+    /** V57：这道错题该用哪条套路治——纯关键词派生（复用 V51 同一张维度表），无 AI、无落库。 */
+    @GetMapping("/{id}/craft-suggestion")
+    public CraftForWrongAnswerResponse craftSuggestion(@PathVariable Long id, Authentication authentication) {
+        return craftSuggestionService.forItem(userId(authentication), id);
     }
 
     @PostMapping

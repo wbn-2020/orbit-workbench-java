@@ -36,8 +36,13 @@ final class CraftLexicon {
 
     /** 套路文本对某维度的关键词命中数（标题+场景+正文+标签）。 */
     static int hits(Set<String> keywords, CraftNoteRecord craft) {
-        String haystack = (craft.getTitle() + " " + craft.getWhenToUse() + " "
-                + craft.getContent() + " " + craft.getTagsJson()).toLowerCase();
+        return hits(keywords, craft.getTitle() + " " + craft.getWhenToUse() + " "
+                + craft.getContent() + " " + craft.getTagsJson());
+    }
+
+    /** 任意文本对某维度的命中数（V57 错题文本归类用同一张表、同一算法）。 */
+    static int hits(Set<String> keywords, String text) {
+        String haystack = text == null ? "" : text.toLowerCase();
         int hits = 0;
         for (String keyword : keywords) {
             if (haystack.contains(keyword.toLowerCase())) {

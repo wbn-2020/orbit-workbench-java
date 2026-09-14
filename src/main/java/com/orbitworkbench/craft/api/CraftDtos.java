@@ -102,4 +102,19 @@ public final class CraftDtos {
     ) {}
 
     public record CraftEffectsResponse(List<CraftEffectResponse> items) {}
+
+    /** V57：一道错题 → 治这类错的候选套路（按错题文本命中的维度匹配；空候选=如实说没对上）。 */
+    public record CraftForWrongAnswerResponse(
+            List<CraftCandidate> items,
+            String note
+    ) {
+        public record CraftCandidate(
+                Long craftId,
+                String title,
+                String category,
+                String whenToUse,
+                String matchedDimension,
+                boolean mastered
+        ) {}
+    }
 }
