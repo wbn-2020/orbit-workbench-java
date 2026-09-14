@@ -61,6 +61,12 @@ class PromptCatalogTest {
                 sha256(PromptCatalog.load("craft-distill-system")));
     }
 
+    @Test
+    void personalAnswerPromptBytesAreLocked() {
+        assertEquals("338c5c25cb7941747c5ff7c17e44f33c94fe695c758d2e49cd45453257dcb3f9",
+                sha256(PromptCatalog.load("personal-answer-system")));
+    }
+
     private static String sha256(String text) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")

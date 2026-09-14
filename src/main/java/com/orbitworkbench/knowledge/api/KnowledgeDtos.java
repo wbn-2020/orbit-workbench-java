@@ -17,10 +17,20 @@ public final class KnowledgeDtos {
 
     public record AskRequest(
             @NotBlank @Size(max = 500) String question,
-            Long projectVersionId
+            Long projectVersionId,
+            /** 检索范围：MATERIALS（项目资料，默认）或 PERSONAL（我的状态，V48）。 */
+            @Pattern(regexp = "MATERIALS|PERSONAL", message = "scope 取值不合法") String scope
     ) {}
 
-    public record SourceItem(String relativePath, int chunkNo, String snippet) {}
+    /**
+     * 回答来源。[category] 仅「我的状态」范围使用（面试报告/画像事实/复习任务/本事库/工作记录/学习目标）；
+     * 项目资料范围沿用 relativePath + chunkNo（category 为空，non_null 序列化会省略该键）。
+     */
+    public record SourceItem(String relativePath, int chunkNo, String snippet, String category) {
+        public SourceItem(String relativePath, int chunkNo, String snippet) {
+            this(relativePath, chunkNo, snippet, null);
+        }
+    }
 
     public record AskResponse(
             String answer,

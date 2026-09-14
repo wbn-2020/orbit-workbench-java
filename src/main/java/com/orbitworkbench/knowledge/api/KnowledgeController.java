@@ -56,7 +56,8 @@ public class KnowledgeController {
     public KnowledgeDtos.AskResponse ask(
             @Valid @RequestBody KnowledgeDtos.AskRequest request,
             Authentication authentication) {
-        return knowledgeService.ask(userId(authentication), request.question(), request.projectVersionId());
+        return knowledgeService.ask(userId(authentication), request.question(),
+                request.projectVersionId(), request.scope());
     }
 
     /**
@@ -70,12 +71,13 @@ public class KnowledgeController {
             Authentication authentication) {
         Long userId = userId(authentication);
         KnowledgeService.AskStreamPreparation preparation =
-                knowledgeService.prepareAsk(userId, request.question(), request.projectVersionId());
+                knowledgeService.prepareAsk(userId, request.question(), request.projectVersionId(),
+                        request.scope());
         if (preparation.insufficient()) {
             return Flux.just(sse("done",
                     "{\"insufficient\":true,\"answer\":\"资料中未找到与问题相关的内容。\",\"sources\":[]}"));
         }
-        ScenarioStreamSessionHandle handle = openStream(userId, preparation);
+        ScenarioStreamSessionHandle handle = openStream(userId, preparation, request.scope());
         StringBuilder buffer = new StringBuilder();
         Flux<ServerSentEvent<String>> body = handle.deltas()
                 .map((String delta) -> {
@@ -99,10 +101,11 @@ public class KnowledgeController {
     }
 
     private ScenarioStreamSessionHandle openStream(Long userId,
-                                                   KnowledgeService.AskStreamPreparation preparation) {
+                                                   KnowledgeService.AskStreamPreparation preparation,
+                                                   String scope) {
         ScenarioStreamSession session = aiScenarioExecution.stream(
                 AiScenario.KNOWLEDGE_ANSWER, userId, null,
-                knowledgeService.answerSystemPrompt(),
+                knowledgeService.answerSystemPrompt(scope),
                 preparation.userPrompt(),
                 knowledgeService.answerMaxTokens(),
                 knowledgeService.answerTimeout(),

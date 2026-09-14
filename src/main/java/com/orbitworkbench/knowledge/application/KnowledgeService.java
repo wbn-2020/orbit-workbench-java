@@ -41,23 +41,28 @@ public class KnowledgeService {
     private static final int SOURCE_SNIPPET = 300;
     /** 正文见 resources/prompts/knowledge-answer-system.txt。 */
     private static final String ANSWER_SYSTEM_PROMPT = PromptCatalog.load("knowledge-answer-system");
+    /** 正文见 resources/prompts/personal-answer-system.txt（V48「我的状态」范围）。 */
+    private static final String PERSONAL_SYSTEM_PROMPT = PromptCatalog.load("personal-answer-system");
 
     private final ProjectMapper projectMapper;
     private final KnowledgeChunkMapper chunkMapper;
     private final LocalStorageService storageService;
     private final AiScenarioExecutionService aiScenarioExecution;
     private final com.orbitworkbench.userfact.application.UserFactService userFactService;
+    private final PersonalContextService personalContextService;
 
     public KnowledgeService(ProjectMapper projectMapper,
                             KnowledgeChunkMapper chunkMapper,
                             LocalStorageService storageService,
                             AiScenarioExecutionService aiScenarioExecution,
-                            com.orbitworkbench.userfact.application.UserFactService userFactService) {
+                            com.orbitworkbench.userfact.application.UserFactService userFactService,
+                            PersonalContextService personalContextService) {
         this.projectMapper = projectMapper;
         this.chunkMapper = chunkMapper;
         this.storageService = storageService;
         this.aiScenarioExecution = aiScenarioExecution;
         this.userFactService = userFactService;
+        this.personalContextService = personalContextService;
     }
 
     /** 个人记忆层注入（V45 溯源）：只带用户确认过的画像事实/编译快照，NONE 表示本次不注入。 */
@@ -113,7 +118,28 @@ public class KnowledgeService {
     }
 
     public AskResponse ask(Long userId, String question, Long projectVersionId) {
+        return ask(userId, question, projectVersionId, "MATERIALS");
+    }
+
+    /**
+     * 问答（V48 双范围）：MATERIALS 检索项目知识块；PERSONAL 聚合个人数据核心六源。
+     * 两者都不编造：项目范围无命中走「资料不足」，个人范围无数据同样如实说明。
+     */
+    public AskResponse ask(Long userId, String question, Long projectVersionId, String scope) {
         String keyword = question.trim();
+        if ("PERSONAL".equals(scope)) {
+            PersonalContextService.PersonalContext personal = personalContextService.build(userId, keyword);
+            if (personal.isEmpty()) {
+                return AskResponse.empty();
+            }
+            com.orbitworkbench.ai.application.MemoryContext memory = memoryContext(userId);
+            String answer = aiScenarioExecution.executeText(AiScenario.KNOWLEDGE_ANSWER, userId, null,
+                    PERSONAL_SYSTEM_PROMPT,
+                    memoryBlock(memory) + "资料：\n" + personal.context() + "\n问题：" + keyword,
+                    ANSWER_MAX_TOKENS, ANSWER_TIMEOUT,
+                    com.orbitworkbench.ai.application.WebSearchMode.DISABLED, memory).trim();
+            return new AskResponse(answer, false, personal.sources());
+        }
         List<KnowledgeChunkRecord> chunks = searchSafely(userId, projectVersionId, keyword);
         if (chunks.isEmpty()) {
             return AskResponse.empty();
@@ -147,7 +173,23 @@ public class KnowledgeService {
      * 不开流；命中则返回准备结果，由 Controller 开流透传增量。
      */
     public AskStreamPreparation prepareAsk(Long userId, String question, Long projectVersionId) {
+        return prepareAsk(userId, question, projectVersionId, "MATERIALS");
+    }
+
+    public AskStreamPreparation prepareAsk(Long userId, String question, Long projectVersionId,
+                                           String scope) {
         String keyword = question.trim();
+        if ("PERSONAL".equals(scope)) {
+            PersonalContextService.PersonalContext personal = personalContextService.build(userId, keyword);
+            if (personal.isEmpty()) {
+                return new AskStreamPreparation(List.of(), "", true,
+                        com.orbitworkbench.ai.application.MemoryContext.NONE);
+            }
+            com.orbitworkbench.ai.application.MemoryContext memory = memoryContext(userId);
+            return new AskStreamPreparation(personal.sources(),
+                    memoryBlock(memory) + "资料：\n" + personal.context() + "\n问题：" + keyword,
+                    false, memory);
+        }
         List<KnowledgeChunkRecord> chunks = searchSafely(userId, projectVersionId, keyword);
         if (chunks.isEmpty()) {
             return new AskStreamPreparation(List.of(), "", true,
@@ -168,9 +210,13 @@ public class KnowledgeService {
                 memoryBlock(memory) + "资料：\n" + context + "\n问题：" + keyword, false, memory);
     }
 
-    /** 流式问答使用的系统提示词（Controller 开流用）。 */
+    /** 流式问答使用的系统提示词（Controller 开流用）；按范围切换。 */
     public String answerSystemPrompt() {
         return ANSWER_SYSTEM_PROMPT;
+    }
+
+    public String answerSystemPrompt(String scope) {
+        return "PERSONAL".equals(scope) ? PERSONAL_SYSTEM_PROMPT : ANSWER_SYSTEM_PROMPT;
     }
 
     public int answerMaxTokens() {
