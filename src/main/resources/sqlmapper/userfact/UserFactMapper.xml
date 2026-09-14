@@ -13,6 +13,8 @@
         <result property="confidence" column="confidence"/>
         <result property="confirmedAt" column="confirmed_at"/>
         <result property="lastSeenAt" column="last_seen_at"/>
+        <result property="injectionCount" column="injection_count"/>
+        <result property="lastInjectedAt" column="last_injected_at"/>
         <result property="archivedReason" column="archived_reason"/>
         <result property="sourceHint" column="source_hint"/>
         <result property="createdAt" column="created_at"/>
@@ -21,8 +23,8 @@
 
     <sql id="allColumns">
         id, user_id, fact_type, title, content, source, confirmation_status,
-        confidence, confirmed_at, last_seen_at, archived_reason, source_hint,
-        created_at, updated_at
+        confidence, confirmed_at, last_seen_at, injection_count, last_injected_at,
+        archived_reason, source_hint, created_at, updated_at
     </sql>
 
     <insert id="insert" parameterType="com.orbitworkbench.userfact.domain.UserFactRecord"
@@ -112,4 +114,17 @@
         ORDER BY fact_type ASC, id ASC
         LIMIT 60
     </select>
+
+    <!-- V46 用量治理：本次实际被组装进 AI 请求的事实打点（只增计数与最后注入时间）。 -->
+    <update id="bumpInjection">
+        UPDATE user_fact
+        SET injection_count = injection_count + 1,
+            last_injected_at = #{injectedAt}
+        WHERE user_id = #{userId}
+          AND confirmation_status = 'CONFIRMED'
+          AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
 </mapper>

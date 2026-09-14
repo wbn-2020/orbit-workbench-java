@@ -56,12 +56,17 @@ class UserFactServiceTest {
     private AiScenarioExecutionService aiScenarioExecution;
     @Mock
     private ProfileDigestService profileDigestService;
+    @Mock
+    private MemoryUsageRecorder usageRecorder;
+    @Mock
+    private FocusNoteService focusNoteService;
 
     private UserFactService service;
 
     @BeforeEach
     void setUp() {
-        service = new UserFactService(factMapper, profileDigestService, jobProfileMapper, workLogMapper,
+        service = new UserFactService(factMapper, profileDigestService, usageRecorder, focusNoteService,
+                jobProfileMapper, workLogMapper,
                 knowledgeCardMapper, learningGoalMapper, reportMapper, aiScenarioExecution,
                 new ObjectMapper());
     }
@@ -246,6 +251,69 @@ class UserFactServiceTest {
         // V45 溯源：过时条数与注入 id 集如实记录
         assertEquals(1, memory.staleCount());
         assertEquals(List.of(20L, 21L), memory.factIds());
+    }
+
+    @Test
+    void confirmedContextRecordsInjectionUsageForInjectedFacts() {
+        UserFactRecord fact = analyzedFact(30L);
+        fact.setConfirmationStatus(UserFactStatus.CONFIRMED);
+        when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of(fact));
+
+        service.confirmedContext(1L);
+
+        // V46 用量治理：注入的事实必须打点（否则「冷记忆」判定永失真）
+        verify(usageRecorder).recordInjection(eq(1L), eq(List.of(30L)));
+    }
+
+    @Test
+    void noneContextDoesNotRecordUsage() {
+        when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of());
+
+        com.orbitworkbench.ai.application.MemoryContext memory = service.confirmedContext(1L);
+
+        assertEquals("NONE", memory.mode());
+        verify(usageRecorder, never()).recordInjection(any(), any());
+    }
+
+    @Test
+    void focusNoteAppendsToFactContextAndPreservesMode() {
+        UserFactRecord fact = analyzedFact(31L);
+        fact.setConfirmationStatus(UserFactStatus.CONFIRMED);
+        when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of(fact));
+        when(focusNoteService.freshFocusForInjection(1L))
+                .thenReturn("近期关注（短期信号，非长期画像）：准备字节二面（关注截止 2026-09-20）");
+
+        com.orbitworkbench.ai.application.MemoryContext memory = service.confirmedContext(1L);
+
+        assertTrue(memory.text().contains("近期关注"), memory.text());
+        assertTrue(memory.text().contains("准备字节二面"));
+        // 有事实时 mode 保持 FACTS，关注只是附加段
+        assertEquals("FACTS", memory.mode());
+    }
+
+    @Test
+    void focusOnlyUsesFocusMode() {
+        when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of());
+        when(focusNoteService.freshFocusForInjection(1L))
+                .thenReturn("近期关注（短期信号，非长期画像）：准备面试");
+
+        com.orbitworkbench.ai.application.MemoryContext memory = service.confirmedContext(1L);
+
+        assertEquals("FOCUS", memory.mode());
+        assertTrue(memory.text().contains("准备面试"));
+        // 只有关注、没有事实：没有可打点的事实 id
+        verify(usageRecorder, never()).recordInjection(any(), any());
+    }
+
+    @Test
+    void expiredFocusIsNotInjected() {
+        when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of());
+        // freshFocusForInjection 过期返回 null
+        when(focusNoteService.freshFocusForInjection(1L)).thenReturn(null);
+
+        com.orbitworkbench.ai.application.MemoryContext memory = service.confirmedContext(1L);
+
+        assertEquals("NONE", memory.mode());
     }
 
     private static UserFactRecord analyzedFact(long id) {

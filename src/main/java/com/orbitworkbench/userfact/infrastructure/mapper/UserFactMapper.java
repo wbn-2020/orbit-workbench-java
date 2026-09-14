@@ -42,4 +42,12 @@ public interface UserFactMapper {
 
     /** 生成建议时携带的已确认事实清单（让模型知道什么已记录、什么被取代）。 */
     List<UserFactRecord> listConfirmedForPrompt(@Param("userId") Long userId);
+
+    /**
+     * 注入计数自增（V46 用量治理）：把本次实际被组装进请求的 CONFIRMED 事实打点。
+     * 只增计数与最后注入时间，不动 last_seen_at（确认时效独立）。
+     */
+    int bumpInjection(@Param("userId") Long userId,
+                      @Param("ids") java.util.Collection<Long> ids,
+                      @Param("injectedAt") Instant injectedAt);
 }

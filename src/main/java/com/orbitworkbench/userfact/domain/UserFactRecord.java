@@ -19,6 +19,12 @@ public class UserFactRecord {
      * 刻意不由注入更新——否则注入越频繁越显新鲜，时效衰减永远不会触发。
      */
     private Instant lastSeenAt;
+    /**
+     * 被组装进 AI 请求的次数与最后一次时间（V46 用量治理）。
+     * 与 last_seen_at 刻意分开：注入是「被使用」，确认是「仍然成立」，两者不该互相覆盖。
+     */
+    private int injectionCount;
+    private Instant lastInjectedAt;
     private String archivedReason;
     private String sourceHint;
     private Instant createdAt;
@@ -46,6 +52,10 @@ public class UserFactRecord {
     public void setConfirmedAt(Instant confirmedAt) { this.confirmedAt = confirmedAt; }
     public Instant getLastSeenAt() { return lastSeenAt; }
     public void setLastSeenAt(Instant lastSeenAt) { this.lastSeenAt = lastSeenAt; }
+    public int getInjectionCount() { return injectionCount; }
+    public void setInjectionCount(int injectionCount) { this.injectionCount = injectionCount; }
+    public Instant getLastInjectedAt() { return lastInjectedAt; }
+    public void setLastInjectedAt(Instant lastInjectedAt) { this.lastInjectedAt = lastInjectedAt; }
     public String getArchivedReason() { return archivedReason; }
     public void setArchivedReason(String archivedReason) { this.archivedReason = archivedReason; }
     public String getSourceHint() { return sourceHint; }

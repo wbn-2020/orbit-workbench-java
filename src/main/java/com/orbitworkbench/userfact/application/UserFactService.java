@@ -76,10 +76,14 @@ public class UserFactService {
     private final LearningGoalMapper learningGoalMapper;
     private final InterviewReportMapper reportMapper;
     private final AiScenarioExecutionService aiScenarioExecution;
+    private final MemoryUsageRecorder usageRecorder;
+    private final FocusNoteService focusNoteService;
     private final ObjectMapper objectMapper;
 
     public UserFactService(UserFactMapper factMapper,
                            ProfileDigestService profileDigestService,
+                           MemoryUsageRecorder usageRecorder,
+                           FocusNoteService focusNoteService,
                            JobProfileMapper jobProfileMapper,
                            WorkLogMapper workLogMapper,
                            KnowledgeCardMapper knowledgeCardMapper,
@@ -89,6 +93,8 @@ public class UserFactService {
                            ObjectMapper objectMapper) {
         this.factMapper = factMapper;
         this.profileDigestService = profileDigestService;
+        this.usageRecorder = usageRecorder;
+        this.focusNoteService = focusNoteService;
         this.jobProfileMapper = jobProfileMapper;
         this.workLogMapper = workLogMapper;
         this.knowledgeCardMapper = knowledgeCardMapper;
@@ -194,7 +200,8 @@ public class UserFactService {
 
     /**
      * 注入链路统一读取口（V45：返回带溯源的 MemoryContext）：
-     * 优先用编译快照（V44），无快照或快照过期时逐条拼 CONFIRMED 事实。
+     * 优先用编译快照（V44），无快照或快照过期时逐条拼 CONFIRMED 事实；
+     * V46 追加「近期关注」（未过期才注入），并把实际注入的事实打点计数。
      */
     @Transactional(readOnly = true)
     public MemoryContext confirmedContext(Long userId) {
@@ -202,12 +209,12 @@ public class UserFactService {
         if (digest != null && digest.getDigest() != null && !digest.getDigest().isBlank()) {
             String text = "候选人画像快照（由其个人记忆层编译，反映已确认事实）：\n"
                     + digest.getDigest() + '\n';
-            return new MemoryContext(text, "DIGEST",
-                    parseSourceIds(digest.getSourceFactIds()), 0);
+            return recordUsage(userId, new MemoryContext(text, "DIGEST",
+                    parseSourceIds(digest.getSourceFactIds()), 0));
         }
         List<UserFactRecord> facts = factMapper.listConfirmed(userId, INJECT_LIMIT);
         if (facts.isEmpty()) {
-            return MemoryContext.NONE;
+            return recordUsage(userId, MemoryContext.NONE);
         }
         StringBuilder context = new StringBuilder("候选人已确认的画像事实（来自其个人记忆层）：\n");
         List<Long> factIds = new ArrayList<>();
@@ -226,7 +233,25 @@ public class UserFactService {
             context.append('\n');
             factIds.add(fact.getId());
         }
-        return new MemoryContext(context.toString(), "FACTS", factIds, staleCount);
+        return recordUsage(userId, new MemoryContext(context.toString(), "FACTS", factIds, staleCount));
+    }
+
+    /**
+     * 追加近期关注并登记用量。
+     * 关注与事实独立：只有关注时 mode 记 FOCUS（既无事实也无关注的 NONE 保持 NONE）。
+     */
+    private MemoryContext recordUsage(Long userId, MemoryContext context) {
+        String focus = focusNoteService.freshFocusForInjection(userId);
+        MemoryContext result = context;
+        if (focus != null) {
+            result = new MemoryContext(context.text() + focus + '\n',
+                    context.present() ? context.mode() : "FOCUS",
+                    context.factIds(), context.staleCount());
+        }
+        if (!result.factIds().isEmpty()) {
+            usageRecorder.recordInjection(userId, result.factIds());
+        }
+        return result;
     }
 
     /** 快照来源事实 id 的 JSON 数组解析；脏数据按空集处理（只影响溯源展示，不影响注入）。 */

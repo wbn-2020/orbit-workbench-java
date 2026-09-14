@@ -1,6 +1,7 @@
 package com.orbitworkbench.userfact.api;
 
 import com.orbitworkbench.userfact.domain.UserFactRecord;
+import com.orbitworkbench.userfact.domain.UserFactStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
@@ -26,6 +27,11 @@ public final class UserFactDtos {
             boolean stale,
             /** 距上次确认的天数；从未确认（候选池）为 null。 */
             Long staleDays,
+            /** 被组装进 AI 请求的次数（V46 用量治理）；从未注入为 0。 */
+            int injectionCount,
+            Instant lastInjectedAt,
+            /** 冷记忆：已确认但从未被注入过——用户可据此清理低价值事实。 */
+            boolean cold,
             String archivedReason,
             Instant createdAt
     ) {
@@ -38,9 +44,12 @@ public final class UserFactDtos {
             Long days = lastSeen == null ? null
                     : UserFactFreshness.daysSince(lastSeen);
             boolean stale = days != null && days >= staleAfterDays;
+            int injections = record.getInjectionCount();
+            boolean confirmed = record.getConfirmationStatus() == UserFactStatus.CONFIRMED;
             return new UserFactResponse(record.getId(), record.getFactType(), record.getTitle(),
                     record.getContent(), record.getSource().name(), record.getConfirmationStatus().name(),
                     record.getConfidence(), record.getConfirmedAt(), lastSeen, stale, days,
+                    injections, record.getLastInjectedAt(), confirmed && injections == 0,
                     record.getArchivedReason(), record.getCreatedAt());
         }
     }
@@ -73,5 +82,20 @@ public final class UserFactDtos {
             boolean stale,
             int factsAdded,
             int factsRemoved
+    ) {}
+
+    /** 近期关注（V46）：expired = 已过失效时刻，不再注入但保留供用户决定去留。 */
+    public record FocusNoteResponse(
+            Long id,
+            String content,
+            Instant expiresAt,
+            boolean expired,
+            Instant updatedAt
+    ) {}
+
+    public record SaveFocusNoteRequest(
+            @NotBlank @Size(max = 400) String content,
+            /** 多少天后自动失效；为空表示不自动失效。 */
+            Integer expiresInDays
     ) {}
 }
