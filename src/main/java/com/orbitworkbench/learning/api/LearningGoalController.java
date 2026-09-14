@@ -47,6 +47,13 @@ public class LearningGoalController {
         return service.update(userId(authentication), id, request);
     }
 
+    /** V52：把一条已确认画像事实转成学习目标（幂等：重复转化返回 409）。 */
+    @PostMapping("/from-fact/{factId}")
+    public LearningGoalResponse createFromFact(@PathVariable Long factId,
+                                               Authentication authentication) {
+        return service.createFromFact(userId(authentication), factId);
+    }
+
     private Long userId(Authentication authentication) {
         return ((OrbitUserDetails) authentication.getPrincipal()).userId();
     }

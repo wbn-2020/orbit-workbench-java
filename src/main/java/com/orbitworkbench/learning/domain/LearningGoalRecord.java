@@ -12,6 +12,8 @@ public class LearningGoalRecord {
     private LearningGoalStatus status;
     private int progress;
     private String linkedSkill;
+    /** V52：来源画像事实 id（fact → 目标链接，幂等按它判定）。 */
+    private Long sourceFactId;
     private String idempotencyKey;
     private int version;
     private Instant createdAt;
@@ -31,6 +33,8 @@ public class LearningGoalRecord {
     public void setProgress(int progress) { this.progress = progress; }
     public String getLinkedSkill() { return linkedSkill; }
     public void setLinkedSkill(String linkedSkill) { this.linkedSkill = linkedSkill; }
+    public Long getSourceFactId() { return sourceFactId; }
+    public void setSourceFactId(Long sourceFactId) { this.sourceFactId = sourceFactId; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
     public int getVersion() { return version; }

@@ -9,34 +9,35 @@
         <result property="status" column="status"/>
         <result property="progress" column="progress"/>
         <result property="linkedSkill" column="linked_skill"/>
+        <result property="sourceFactId" column="source_fact_id"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
     <insert id="insert" parameterType="com.orbitworkbench.learning.domain.LearningGoalRecord"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO learning_goal(
-            user_id, title, reason, status, progress, linked_skill, idempotency_key, version, created_at, updated_at
+            user_id, title, reason, status, progress, linked_skill, source_fact_id, idempotency_key, version, created_at, updated_at
         )
         VALUES(
-            #{userId}, #{title}, #{reason}, #{status}, #{progress}, #{linkedSkill}, #{idempotencyKey}, #{version}, #{createdAt}, #{updatedAt}
+            #{userId}, #{title}, #{reason}, #{status}, #{progress}, #{linkedSkill}, #{sourceFactId}, #{idempotencyKey}, #{version}, #{createdAt}, #{updatedAt}
         )
         ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)
     </insert>
 
     <select id="findOwned" resultMap="LearningGoalRowMap">
-        SELECT id, title, reason, status, progress, linked_skill, created_at
+        SELECT id, title, reason, status, progress, linked_skill, source_fact_id, created_at
         FROM learning_goal
         WHERE user_id = #{userId} AND id = #{id}
     </select>
 
     <select id="findByIdempotencyKey" resultMap="LearningGoalRowMap">
-        SELECT id, title, reason, status, progress, linked_skill, created_at
+        SELECT id, title, reason, status, progress, linked_skill, source_fact_id, created_at
         FROM learning_goal
         WHERE user_id = #{userId} AND idempotency_key = #{idempotencyKey}
     </select>
 
     <select id="listByUser" resultMap="LearningGoalRowMap">
-        SELECT id, title, reason, status, progress, linked_skill, created_at
+        SELECT id, title, reason, status, progress, linked_skill, source_fact_id, created_at
         FROM learning_goal
         WHERE user_id = #{userId}
         ORDER BY
@@ -50,4 +51,18 @@
         SET status = #{status}, progress = #{progress}, updated_at = #{updatedAt}
         WHERE id = #{id} AND user_id = #{userId}
     </update>
+
+    <!-- V52：已转成学习目标的事实 id 集合（事实卡片回显「已成目标」） -->
+    <select id="listFactIdsWithGoals" resultType="long">
+        SELECT DISTINCT source_fact_id
+        FROM learning_goal
+        WHERE user_id = #{userId}
+          AND source_fact_id IS NOT NULL
+    </select>
+
+    <select id="countBySourceFact" resultType="int">
+        SELECT COUNT(*)
+        FROM learning_goal
+        WHERE user_id = #{userId} AND source_fact_id = #{factId}
+    </select>
 </mapper>

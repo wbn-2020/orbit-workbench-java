@@ -24,4 +24,10 @@ public interface LearningGoalMapper {
                                 @Param("status") String status,
                                 @Param("progress") int progress,
                                 @Param("updatedAt") Instant updatedAt);
+
+    /** V52：已转成学习目标的事实 id 集合（事实卡片回显「已成目标」）。 */
+    List<Long> listFactIdsWithGoals(@Param("userId") Long userId);
+
+    /** V52：某条事实已转成的目标数（fact→goal 幂等判定）。 */
+    int countBySourceFact(@Param("userId") Long userId, @Param("factId") Long factId);
 }

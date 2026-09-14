@@ -106,8 +106,12 @@ public class UserFactService {
 
     @Transactional(readOnly = true)
     public UserFactListResponse list(Long userId) {
+        // V52：回显「已成目标」——用真实 learning_goal 存在性派生，不在前端猜（同 V49 practiced 口径）
+        Set<Long> derived = new HashSet<>(learningGoalMapper.listFactIdsWithGoals(userId));
         return new UserFactListResponse(factMapper.listByUser(userId).stream()
-                .map(UserFactResponse::from).toList());
+                .map(record -> UserFactResponse.from(record, UserFactFreshness.STALE_AFTER_DAYS,
+                        derived.contains(record.getId())))
+                .toList());
     }
 
     @Transactional

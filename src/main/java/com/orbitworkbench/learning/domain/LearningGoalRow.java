@@ -11,6 +11,8 @@ public class LearningGoalRow {
     private LearningGoalStatus status;
     private int progress;
     private String linkedSkill;
+    /** V52：来源画像事实 id（fact → 目标链接）；普通目标为 null。 */
+    private Long sourceFactId;
     private Instant createdAt;
 
     public Long getId() { return id; }
@@ -25,6 +27,8 @@ public class LearningGoalRow {
     public void setProgress(int progress) { this.progress = progress; }
     public String getLinkedSkill() { return linkedSkill; }
     public void setLinkedSkill(String linkedSkill) { this.linkedSkill = linkedSkill; }
+    public Long getSourceFactId() { return sourceFactId; }
+    public void setSourceFactId(Long sourceFactId) { this.sourceFactId = sourceFactId; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

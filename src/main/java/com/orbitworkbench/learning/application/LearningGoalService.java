@@ -27,9 +27,12 @@ public class LearningGoalService {
     private static final int LIST_LIMIT = 500;
 
     private final LearningGoalMapper mapper;
+    private final com.orbitworkbench.userfact.infrastructure.mapper.UserFactMapper userFactMapper;
 
-    public LearningGoalService(LearningGoalMapper mapper) {
+    public LearningGoalService(LearningGoalMapper mapper,
+                               com.orbitworkbench.userfact.infrastructure.mapper.UserFactMapper userFactMapper) {
         this.mapper = mapper;
+        this.userFactMapper = userFactMapper;
     }
 
     @Transactional(readOnly = true)
@@ -90,6 +93,44 @@ public class LearningGoalService {
         }
         mapper.updateStatusAndProgress(id, userId, status.name(), progress, Instant.now());
         return LearningGoalResponse.from(requireOwned(userId, id));
+    }
+
+    /**
+     * V52：把一条已确认画像事实转成学习目标（事实 → 目标的横向链接）。
+     * 幂等按 source_fact_id 判定——一条事实只转化一次，重复点击返回 409 由前端回显「已成目标」。
+     * 候选池（ANALYZED）事实不能转：未确认的推断不是用户的自我认知。
+     */
+    @Transactional
+    public LearningGoalResponse createFromFact(Long userId, Long factId) {
+        com.orbitworkbench.userfact.domain.UserFactRecord fact =
+                userFactMapper.findByIdAndUser(factId, userId);
+        if (fact == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND, "用户事实不存在");
+        }
+        if (fact.getConfirmationStatus()
+                != com.orbitworkbench.userfact.domain.UserFactStatus.CONFIRMED) {
+            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
+                    "只有已确认的画像事实可以转成学习目标");
+        }
+        if (mapper.countBySourceFact(userId, factId) > 0) {
+            throw new ApiException(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT,
+                    "这条事实已经转成学习目标了");
+        }
+        Instant now = Instant.now();
+        LearningGoalRecord record = new LearningGoalRecord();
+        record.setUserId(userId);
+        record.setTitle(fact.getTitle());
+        record.setReason(fact.getContent());
+        record.setStatus(LearningGoalStatus.ACTIVE);
+        record.setProgress(0);
+        record.setLinkedSkill(null);
+        record.setSourceFactId(factId);
+        record.setIdempotencyKey(null);
+        record.setVersion(1);
+        record.setCreatedAt(now);
+        record.setUpdatedAt(now);
+        mapper.insert(record);
+        return LearningGoalResponse.from(requireOwned(userId, record.getId()));
     }
 
     private LearningGoalRow requireOwned(Long userId, Long id) {

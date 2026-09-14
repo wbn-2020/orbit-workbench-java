@@ -31,7 +31,9 @@ public final class LearningGoalDtos {
             String reason,
             LearningGoalStatus status,
             int progress,
-            String linkedSkill
+            String linkedSkill,
+            /** V52：由哪条画像事实转化而来；普通目标为 null（non_null 序列化下键缺席）。 */
+            Long sourceFactId
     ) {
         public static LearningGoalResponse from(LearningGoalRow row) {
             return new LearningGoalResponse(
@@ -40,7 +42,8 @@ public final class LearningGoalDtos {
                     row.getReason(),
                     row.getStatus(),
                     row.getProgress(),
-                    row.getLinkedSkill());
+                    row.getLinkedSkill(),
+                    row.getSourceFactId());
         }
     }
 }

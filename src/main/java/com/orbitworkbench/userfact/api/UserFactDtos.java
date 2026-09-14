@@ -32,6 +32,8 @@ public final class UserFactDtos {
             Instant lastInjectedAt,
             /** 冷记忆：已确认但从未被注入过——用户可据此清理低价值事实。 */
             boolean cold,
+            /** V52：这条事实已转成学习目标（由服务层按 learning_goal 派生，前端不猜）。 */
+            boolean goalDerived,
             String archivedReason,
             Instant createdAt
     ) {
@@ -40,6 +42,11 @@ public final class UserFactDtos {
         }
 
         public static UserFactResponse from(UserFactRecord record, long staleAfterDays) {
+            return from(record, staleAfterDays, false);
+        }
+
+        public static UserFactResponse from(UserFactRecord record, long staleAfterDays,
+                                            boolean goalDerived) {
             Instant lastSeen = UserFactFreshness.lastSeen(record);
             Long days = lastSeen == null ? null
                     : UserFactFreshness.daysSince(lastSeen);
@@ -49,7 +56,7 @@ public final class UserFactDtos {
             return new UserFactResponse(record.getId(), record.getFactType(), record.getTitle(),
                     record.getContent(), record.getSource().name(), record.getConfirmationStatus().name(),
                     record.getConfidence(), record.getConfirmedAt(), lastSeen, stale, days,
-                    injections, record.getLastInjectedAt(), confirmed && injections == 0,
+                    injections, record.getLastInjectedAt(), confirmed && injections == 0, goalDerived,
                     record.getArchivedReason(), record.getCreatedAt());
         }
     }
