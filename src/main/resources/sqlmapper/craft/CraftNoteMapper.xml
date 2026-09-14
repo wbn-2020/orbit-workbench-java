@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.orbitworkbench.craft.infrastructure.mapper.CraftNoteMapper">
+    <resultMap id="CraftMap" type="com.orbitworkbench.craft.domain.CraftNoteRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="category" column="category"/>
+        <result property="title" column="title"/>
+        <result property="whenToUse" column="when_to_use"/>
+        <result property="content" column="content"/>
+        <result property="tagsJson" column="tags_json"/>
+        <result property="source" column="source"/>
+        <result property="confirmationStatus" column="confirmation_status"/>
+        <result property="confidence" column="confidence"/>
+        <result property="pinned" column="pinned"/>
+        <result property="version" column="version"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="allColumns">
+        id, user_id, category, title, when_to_use, content, tags_json, source,
+        confirmation_status, confidence, pinned, version, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.orbitworkbench.craft.domain.CraftNoteRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO craft_note(
+            user_id, category, title, when_to_use, content, tags_json, source,
+            confirmation_status, confidence, pinned, version, created_at, updated_at
+        )
+        VALUES(
+            #{userId}, #{category}, #{title}, #{whenToUse}, #{content}, #{tagsJson}, #{source},
+            #{confirmationStatus}, #{confidence}, #{pinned}, #{version}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <!-- 候选池在前、置顶靠前、再按更新时间：待确认建议最需要被看到。 -->
+    <select id="listByUser" resultMap="CraftMap">
+        SELECT <include refid="allColumns"/>
+        FROM craft_note
+        WHERE user_id = #{userId}
+        ORDER BY
+            CASE confirmation_status WHEN 'ANALYZED' THEN 0
+                                     WHEN 'CONFIRMED' THEN 1
+                                     ELSE 2 END,
+            pinned DESC,
+            updated_at DESC,
+            id DESC
+    </select>
+
+    <select id="findByIdAndUser" resultMap="CraftMap">
+        SELECT <include refid="allColumns"/>
+        FROM craft_note
+        WHERE id = #{id} AND user_id = #{userId}
+    </select>
+
+    <select id="listConfirmedForPrompt" resultMap="CraftMap">
+        SELECT <include refid="allColumns"/>
+        FROM craft_note
+        WHERE user_id = #{userId} AND confirmation_status = 'CONFIRMED'
+        ORDER BY id ASC
+        LIMIT 40
+    </select>
+
+    <select id="countAnalyzed" resultType="long">
+        SELECT COUNT(*)
+        FROM craft_note
+        WHERE user_id = #{userId} AND confirmation_status = 'ANALYZED'
+    </select>
+
+    <update id="updateContent">
+        UPDATE craft_note
+        SET category = #{category},
+            title = #{title},
+            when_to_use = #{whenToUse},
+            content = #{content},
+            tags_json = #{tagsJson},
+            version = version + 1,
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND confirmation_status != 'ARCHIVED'
+    </update>
+
+    <update id="confirm">
+        UPDATE craft_note
+        SET category = #{category},
+            title = #{title},
+            when_to_use = #{whenToUse},
+            content = #{content},
+            tags_json = #{tagsJson},
+            confirmation_status = 'CONFIRMED',
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND confirmation_status = 'ANALYZED'
+    </update>
+
+    <update id="archive">
+        UPDATE craft_note
+        SET confirmation_status = 'ARCHIVED',
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND confirmation_status != 'ARCHIVED'
+    </update>
+
+    <update id="setPinned">
+        UPDATE craft_note
+        SET pinned = #{pinned},
+            updated_at = #{updatedAt}
+        WHERE id = #{id} AND user_id = #{userId} AND confirmation_status = 'CONFIRMED'
+    </update>
+</mapper>

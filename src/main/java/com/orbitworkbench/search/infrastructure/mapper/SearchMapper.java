@@ -53,4 +53,9 @@ public interface SearchMapper {
     List<SearchHitRow> searchStudyTasks(@Param("userId") Long userId,
                                         @Param("keyword") String keyword,
                                         @Param("limit") int limit);
+
+    /** V47：可复用本事（讲述结构/话术/套路/复盘方法）。 */
+    List<SearchHitRow> searchCrafts(@Param("userId") Long userId,
+                                    @Param("keyword") String keyword,
+                                    @Param("limit") int limit);
 }

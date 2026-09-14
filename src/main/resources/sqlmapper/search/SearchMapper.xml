@@ -162,4 +162,20 @@
         ORDER BY t.updated_at DESC, t.id DESC
         LIMIT #{limit}
     </select>
+
+    <!-- V47 本事库：只搜已入库（CONFIRMED）套路；候选池不是正式内容 -->
+    <select id="searchCrafts" resultMap="SearchHitRowMap">
+        SELECT c.id AS id, c.title AS title,
+               CONCAT_WS(' ', c.when_to_use, c.content, CAST(c.tags_json AS CHAR)) AS body,
+               CONCAT(c.category, ' · 本事库') AS sub, c.updated_at AS updatedAt
+        FROM craft_note c
+        WHERE c.user_id = #{userId}
+          AND c.confirmation_status = 'CONFIRMED'
+          AND (c.title LIKE CONCAT('%', #{keyword}, '%')
+               OR c.when_to_use LIKE CONCAT('%', #{keyword}, '%')
+               OR c.content LIKE CONCAT('%', #{keyword}, '%')
+               OR CAST(c.tags_json AS CHAR) LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY c.pinned DESC, c.updated_at DESC, c.id DESC
+        LIMIT #{limit}
+    </select>
 </mapper>

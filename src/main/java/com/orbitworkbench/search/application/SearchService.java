@@ -86,6 +86,12 @@ public class SearchService {
                                 snippet(row.getBody(), query), row.getSub(),
                                 "/study-plan?focus=" + row.getId()))
                         .toList()));
+        groups.add(group("CRAFT", "本事库",
+                searchMapper.searchCrafts(userId, keyword, PER_DOMAIN_LIMIT).stream()
+                        .map(row -> hit("CRAFT", row.getId(), row.getTitle(),
+                                snippet(row.getBody(), query), row.getSub(),
+                                "/crafts?focus=" + row.getId()))
+                        .toList()));
         groups.removeIf(g -> g.items().isEmpty());
 
         int total = groups.stream().mapToInt(SearchGroup::total).sum();

@@ -16,6 +16,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         "com.orbitworkbench.aiconnection.infrastructure.mapper",
         "com.orbitworkbench.backup.infrastructure.mapper",
         "com.orbitworkbench.capability.infrastructure.mapper",
+        "com.orbitworkbench.craft.infrastructure.mapper",
         "com.orbitworkbench.identity.infrastructure.mapper",
         "com.orbitworkbench.interview.infrastructure.mapper",
         "com.orbitworkbench.interviewer.infrastructure.mapper",
