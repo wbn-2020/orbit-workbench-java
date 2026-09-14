@@ -2,10 +2,12 @@ package com.orbitworkbench.craft.api;
 
 import com.orbitworkbench.craft.api.CraftDtos.CraftListResponse;
 import com.orbitworkbench.craft.api.CraftDtos.CraftNoteResponse;
+import com.orbitworkbench.craft.api.CraftDtos.CraftRecommendationsResponse;
 import com.orbitworkbench.craft.api.CraftDtos.DistillCraftResponse;
 import com.orbitworkbench.craft.api.CraftDtos.PinCraftRequest;
 import com.orbitworkbench.craft.api.CraftDtos.SaveCraftRequest;
 import com.orbitworkbench.craft.application.CraftNoteService;
+import com.orbitworkbench.craft.application.CraftRecommendationService;
 import com.orbitworkbench.identity.application.OrbitUserDetails;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -24,17 +26,26 @@ import org.springframework.web.bind.annotation.RestController;
 public class CraftNoteController {
 
     private final CraftNoteService service;
+    private final CraftRecommendationService recommendationService;
     private final com.orbitworkbench.studyplan.application.StudyTaskService studyTaskService;
 
     public CraftNoteController(CraftNoteService service,
+                               CraftRecommendationService recommendationService,
                                com.orbitworkbench.studyplan.application.StudyTaskService studyTaskService) {
         this.service = service;
+        this.recommendationService = recommendationService;
         this.studyTaskService = studyTaskService;
     }
 
     @GetMapping
     public CraftListResponse list(Authentication authentication) {
         return new CraftListResponse(service.list(userId(authentication)));
+    }
+
+    /** V51：面试弱项 → 具体套路推荐（纯派生只读，无 AI、无落库）。 */
+    @GetMapping("/recommendations")
+    public CraftRecommendationsResponse recommendations(Authentication authentication) {
+        return recommendationService.recommend(userId(authentication));
     }
 
     @PostMapping

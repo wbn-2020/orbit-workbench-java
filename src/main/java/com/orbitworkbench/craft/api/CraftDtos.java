@@ -69,4 +69,20 @@ public final class CraftDtos {
     public record DistillCraftResponse(List<CraftNoteResponse> suggestions) {}
 
     public record PinCraftRequest(boolean pinned) {}
+
+    /** V51：面试弱项 → 套路推荐（只读派生，无 AI、无落库）。 */
+    public record WeaknessCraftRecommendation(
+            String dimension,
+            int score,
+            Long craftId,
+            String craftTitle,
+            String craftCategory,
+            String whenToUse,
+            boolean mastered
+    ) {}
+
+    public record CraftRecommendationsResponse(
+            List<WeaknessCraftRecommendation> items,
+            String basis
+    ) {}
 }
