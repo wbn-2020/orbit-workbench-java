@@ -105,7 +105,10 @@ class ProfileDigestServiceTest {
         stubDigest(digestMapper, "[1,2,3,4]", 4);
         when(factMapper.listConfirmedForPrompt(1L)).thenReturn(facts(4));
 
-        assertEquals("快照正文", service.freshDigestForInjection(1L));
+        com.orbitworkbench.userfact.domain.UserProfileDigestRecord record =
+                service.freshDigestForInjection(1L);
+        assertEquals("快照正文", record.getDigest());
+        assertEquals("[1,2,3,4]", record.getSourceFactIds());
     }
 
     @Test

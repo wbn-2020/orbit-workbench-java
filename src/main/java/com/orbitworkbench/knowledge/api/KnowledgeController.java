@@ -105,7 +105,9 @@ public class KnowledgeController {
                 knowledgeService.answerSystemPrompt(),
                 preparation.userPrompt(),
                 knowledgeService.answerMaxTokens(),
-                knowledgeService.answerTimeout());
+                knowledgeService.answerTimeout(),
+                com.orbitworkbench.ai.application.WebSearchMode.DISABLED,
+                preparation.memory());
         try {
             session.begin();
         } catch (ApiException exception) {

@@ -3,6 +3,7 @@ package com.orbitworkbench.userfact.application;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orbitworkbench.ai.application.AiOutputCleaner;
+import com.orbitworkbench.ai.application.MemoryContext;
 import com.orbitworkbench.ai.application.PromptCatalog;
 import com.orbitworkbench.aiconnection.application.AiScenarioExecutionService;
 import com.orbitworkbench.aiconnection.domain.AiScenario;
@@ -23,6 +24,7 @@ import com.orbitworkbench.userfact.api.UserFactFreshness;
 import com.orbitworkbench.userfact.domain.UserFactRecord;
 import com.orbitworkbench.userfact.domain.UserFactSource;
 import com.orbitworkbench.userfact.domain.UserFactStatus;
+import com.orbitworkbench.userfact.domain.UserProfileDigestRecord;
 import com.orbitworkbench.userfact.infrastructure.mapper.UserFactMapper;
 import com.orbitworkbench.worklog.domain.KnowledgeCardRow;
 import com.orbitworkbench.worklog.domain.WorkLogRow;
@@ -190,18 +192,26 @@ public class UserFactService {
         return persistSuggestions(userId, output);
     }
 
-    /** 注入链路统一读取口：优先用编译快照（V44），无快照或快照过期时逐条拼 CONFIRMED 事实。 */
+    /**
+     * 注入链路统一读取口（V45：返回带溯源的 MemoryContext）：
+     * 优先用编译快照（V44），无快照或快照过期时逐条拼 CONFIRMED 事实。
+     */
     @Transactional(readOnly = true)
-    public String confirmedContext(Long userId) {
-        String digest = profileDigestService.freshDigestForInjection(userId);
-        if (digest != null && !digest.isBlank()) {
-            return "候选人画像快照（由其个人记忆层编译，反映已确认事实）：\n" + digest + '\n';
+    public MemoryContext confirmedContext(Long userId) {
+        UserProfileDigestRecord digest = profileDigestService.freshDigestForInjection(userId);
+        if (digest != null && digest.getDigest() != null && !digest.getDigest().isBlank()) {
+            String text = "候选人画像快照（由其个人记忆层编译，反映已确认事实）：\n"
+                    + digest.getDigest() + '\n';
+            return new MemoryContext(text, "DIGEST",
+                    parseSourceIds(digest.getSourceFactIds()), 0);
         }
         List<UserFactRecord> facts = factMapper.listConfirmed(userId, INJECT_LIMIT);
         if (facts.isEmpty()) {
-            return "";
+            return MemoryContext.NONE;
         }
         StringBuilder context = new StringBuilder("候选人已确认的画像事实（来自其个人记忆层）：\n");
+        List<Long> factIds = new ArrayList<>();
+        int staleCount = 0;
         for (UserFactRecord fact : facts) {
             // 陈旧事实照常注入（用户没删就说明还有参考价值），但必须带上时效标注：
             // 三个月前确认的「Java 仅具备工作能力」不该被模型当成今天的水平。
@@ -211,10 +221,33 @@ public class UserFactService {
             String note = UserFactFreshness.injectNote(fact);
             if (!note.isEmpty()) {
                 context.append(note);
+                staleCount++;
             }
             context.append('\n');
+            factIds.add(fact.getId());
         }
-        return context.toString();
+        return new MemoryContext(context.toString(), "FACTS", factIds, staleCount);
+    }
+
+    /** 快照来源事实 id 的 JSON 数组解析；脏数据按空集处理（只影响溯源展示，不影响注入）。 */
+    private List<Long> parseSourceIds(String json) {
+        List<Long> ids = new ArrayList<>();
+        if (json == null || json.isBlank()) {
+            return ids;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            if (node.isArray()) {
+                for (JsonNode item : node) {
+                    if (item.isNumber()) {
+                        ids.add(item.asLong());
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // 溯源字段，坏了解析不出来即可
+        }
+        return ids;
     }
 
     private DistillResultResponse persistSuggestions(Long userId, String output) {

@@ -64,8 +64,17 @@ public class AiScenarioExecutionService {
     public ScenarioStreamSession stream(AiScenario scenario, Long userId, Long pinnedConnectionId,
                                         String systemPrompt, String userPrompt,
                                         int maxOutputTokens, Duration timeout, WebSearchMode webSearch) {
+        return stream(scenario, userId, pinnedConnectionId, systemPrompt, userPrompt,
+                maxOutputTokens, timeout, webSearch, null);
+    }
+
+    /** V45：memory 为本次注入的个人记忆上下文（可空），进配置快照供事后溯源。 */
+    public ScenarioStreamSession stream(AiScenario scenario, Long userId, Long pinnedConnectionId,
+                                        String systemPrompt, String userPrompt,
+                                        int maxOutputTokens, Duration timeout, WebSearchMode webSearch,
+                                        com.orbitworkbench.ai.application.MemoryContext memory) {
         return new ScenarioStreamSession(router, recorder, modelGateway, scenario, userId,
-                pinnedConnectionId, systemPrompt, userPrompt, maxOutputTokens, timeout, webSearch);
+                pinnedConnectionId, systemPrompt, userPrompt, maxOutputTokens, timeout, webSearch, memory);
     }
 
     public String executeText(AiScenario scenario, Long userId, Long pinnedConnectionId,
@@ -82,11 +91,20 @@ public class AiScenarioExecutionService {
     public String executeText(AiScenario scenario, Long userId, Long pinnedConnectionId,
                               String systemPrompt, String userPrompt,
                               int maxOutputTokens, Duration timeout, WebSearchMode requestedWebSearch) {
+        return executeText(scenario, userId, pinnedConnectionId, systemPrompt, userPrompt,
+                maxOutputTokens, timeout, requestedWebSearch, null);
+    }
+
+    /** V45：memory 为本次注入的个人记忆上下文（可空），进配置快照供事后溯源。 */
+    public String executeText(AiScenario scenario, Long userId, Long pinnedConnectionId,
+                              String systemPrompt, String userPrompt,
+                              int maxOutputTokens, Duration timeout, WebSearchMode requestedWebSearch,
+                              com.orbitworkbench.ai.application.MemoryContext memory) {
         ResolvedRoute route = router.resolve(userId, scenario, pinnedConnectionId);
         WebSearchDecision webSearch = WebSearchDecision.resolve(requestedWebSearch, route.primary());
         int requestChars = chars(systemPrompt) + chars(userPrompt);
         Long auditId = recorder.start(userId, scenario, route, requestChars,
-                recorder.snapshotJson(scenario, route, maxOutputTokens, true, webSearch));
+                recorder.snapshotJson(scenario, route, maxOutputTokens, true, webSearch, memory));
         long start = System.nanoTime();
 
         Attempt first = attempt(scenario, route.primary(), systemPrompt, userPrompt,

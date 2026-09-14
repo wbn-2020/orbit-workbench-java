@@ -77,7 +77,7 @@ class InterviewQuestionServiceTest {
     void setUp() {
         userFactService = org.mockito.Mockito.mock(
                 com.orbitworkbench.userfact.application.UserFactService.class);
-        when(userFactService.confirmedContext(any())).thenReturn("");
+        when(userFactService.confirmedContext(any())).thenReturn(com.orbitworkbench.ai.application.MemoryContext.NONE);
         service = new InterviewQuestionService(sessionMapper, turnMapper, aiScenarioRouter,
                 aiScenarioExecution, aiCallAuditRecorder, modelGateway,
                 new com.fasterxml.jackson.databind.ObjectMapper(),
@@ -88,7 +88,7 @@ class InterviewQuestionServiceTest {
         when(aiScenarioRouter.resolve(any(), any(), any())).thenReturn(
                 new AiScenarioRouter.ResolvedRoute(PRIMARY, null, false, AiScenarioRouter.SOURCE_PINNED));
         when(aiCallAuditRecorder.start(any(), any(), any(), anyInt(), any())).thenReturn(77L);
-        when(aiCallAuditRecorder.snapshotJson(any(), any(), anyInt(), anyBoolean())).thenReturn("{}");
+        when(aiCallAuditRecorder.snapshotJson(any(), any(), anyInt(), anyBoolean(), any(), any())).thenReturn("{}");
     }
 
     @Test
@@ -113,7 +113,7 @@ class InterviewQuestionServiceTest {
         ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
         verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_QUESTION), eq(7L), eq(5L),
-                system.capture(), user.capture(), anyInt(), any(Duration.class));
+                system.capture(), user.capture(), anyInt(), any(Duration.class), any(), any());
         assertEquals(true, system.getValue().contains("严格追问真实职责"));
         assertEquals(true, system.getValue().contains("重点考查方向：架构取舍"));
         assertEquals(true, user.getValue().contains("秒杀中台"));
@@ -138,7 +138,7 @@ class InterviewQuestionServiceTest {
 
         ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
         verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_QUESTION), eq(7L), eq(5L),
-                any(), user.capture(), anyInt(), any(Duration.class));
+                any(), user.capture(), anyInt(), any(Duration.class), any(), any());
         assertEquals(true, user.getValue().contains("个人经验（知识卡片）"));
         assertEquals(true, user.getValue().contains("库存分桶方案：库存扣减按桶拆分避免热点"));
     }
@@ -158,7 +158,7 @@ class InterviewQuestionServiceTest {
 
         ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
         verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_QUESTION), eq(7L), eq(5L),
-                any(), user.capture(), anyInt(), any(Duration.class));
+                any(), user.capture(), anyInt(), any(Duration.class), any(), any());
         assertEquals(false, user.getValue().contains("个人经验（知识卡片）"));
     }
 
@@ -343,7 +343,7 @@ class InterviewQuestionServiceTest {
 
     private void stubExecution(String text) {
         when(aiScenarioExecution.executeText(any(), any(), any(), any(), any(), anyInt(),
-                any(Duration.class))).thenReturn(text);
+                any(Duration.class), any(), any())).thenReturn(text);
     }
 
     private void stubInsertId(Long id) {
@@ -364,7 +364,7 @@ class InterviewQuestionServiceTest {
         assertEquals(ErrorCode.INVALID_REQUEST, exception.getErrorCode());
         assertEquals("turnType 取值不合法", exception.getMessage());
         verify(aiScenarioExecution, never()).executeText(any(), any(), any(), any(), any(),
-                anyInt(), any());
+                anyInt(), any(), any(), any());
         verify(turnMapper, never()).insert(any(InterviewTurnRecord.class));
     }
 

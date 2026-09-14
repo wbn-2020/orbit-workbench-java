@@ -114,6 +114,16 @@ public class AiCallAuditRecorder {
      */
     public String snapshotJson(AiScenario scenario, AiScenarioRouter.ResolvedRoute route,
                                int maxOutputTokens, boolean stream, WebSearchDecision webSearch) {
+        return snapshotJson(scenario, route, maxOutputTokens, stream, webSearch, null);
+    }
+
+    /**
+     * V45 注入溯源：memory 非空且确实注入了记忆时，快照加 memory 键
+     * （模式/条数/事实 id/过时数/字符数）。只记结构不记正文——审计不落请求内容。
+     */
+    public String snapshotJson(AiScenario scenario, AiScenarioRouter.ResolvedRoute route,
+                               int maxOutputTokens, boolean stream, WebSearchDecision webSearch,
+                               com.orbitworkbench.ai.application.MemoryContext memory) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("scenario", scenario.name());
         snapshot.put("source", route.source());
@@ -131,6 +141,15 @@ public class AiCallAuditRecorder {
             if (webSearch.reason() != null) {
                 snapshot.put("webSearchNote", webSearch.reason());
             }
+        }
+        if (memory != null && memory.present()) {
+            Map<String, Object> memorySummary = new LinkedHashMap<>();
+            memorySummary.put("mode", memory.mode());
+            memorySummary.put("factCount", memory.factIds().size());
+            memorySummary.put("factIds", memory.factIds());
+            memorySummary.put("staleCount", memory.staleCount());
+            memorySummary.put("chars", memory.chars());
+            snapshot.put("memory", memorySummary);
         }
         try {
             return objectMapper.writeValueAsString(snapshot);

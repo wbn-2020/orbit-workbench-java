@@ -31,6 +31,8 @@ public final class ScenarioStreamSession {
     private final int maxOutputTokens;
     private final Duration timeout;
     private final WebSearchMode requestedWebSearch;
+    /** V45 注入溯源：本次注入的个人记忆上下文（可空），进配置快照。 */
+    private final com.orbitworkbench.ai.application.MemoryContext memory;
     private WebSearchDecision webSearch;
     private final java.util.concurrent.atomic.AtomicBoolean finished = new java.util.concurrent.atomic.AtomicBoolean();
 
@@ -46,6 +48,15 @@ public final class ScenarioStreamSession {
                           ModelGateway modelGateway, AiScenario scenario, Long userId,
                           Long pinnedConnectionId, String systemPrompt, String userPrompt,
                           int maxOutputTokens, Duration timeout, WebSearchMode requestedWebSearch) {
+        this(router, recorder, modelGateway, scenario, userId, pinnedConnectionId, systemPrompt,
+                userPrompt, maxOutputTokens, timeout, requestedWebSearch, null);
+    }
+
+    ScenarioStreamSession(AiScenarioRouter router, AiCallAuditRecorder recorder,
+                          ModelGateway modelGateway, AiScenario scenario, Long userId,
+                          Long pinnedConnectionId, String systemPrompt, String userPrompt,
+                          int maxOutputTokens, Duration timeout, WebSearchMode requestedWebSearch,
+                          com.orbitworkbench.ai.application.MemoryContext memory) {
         this.router = router;
         this.recorder = recorder;
         this.modelGateway = modelGateway;
@@ -57,6 +68,7 @@ public final class ScenarioStreamSession {
         this.maxOutputTokens = maxOutputTokens;
         this.timeout = timeout;
         this.requestedWebSearch = requestedWebSearch;
+        this.memory = memory;
     }
 
     /** 开流前调用：解析账户并写 RUNNING 审计。抛出的 ApiException 语义是「流未开始」，调用方可直接回 4xx/5xx。 */
@@ -67,7 +79,7 @@ public final class ScenarioStreamSession {
         start = System.nanoTime();
         auditId = recorder.start(userId, scenario, resolvedRoute, requestChars,
                 recorder.snapshotJson(scenario, resolvedRoute, maxOutputTokens, true,
-                        webSearch));
+                        webSearch, memory));
     }
 
     /** 增量事件流。文本事件原样透传；上游失败映射为 ApiException 供调用方发 error 事件。 */

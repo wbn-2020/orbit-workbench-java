@@ -22,8 +22,10 @@ class KnowledgeStreamRegressionTest {
         var json = new ObjectMapper();
         var source = new KnowledgeDtos.SourceItem("docs/\"design\".md", 2, "source snippet");
         when(knowledge.prepareAsk(7L, "question", null)).thenReturn(
-                new KnowledgeService.AskStreamPreparation(List.of(source), "prompt", false));
-        when(execution.stream(any(), any(), any(), any(), any(), anyInt(), any())).thenReturn(stream);
+                new KnowledgeService.AskStreamPreparation(List.of(source), "prompt", false,
+                        com.orbitworkbench.ai.application.MemoryContext.NONE));
+        when(execution.stream(any(), any(), any(), any(), any(), anyInt(), any(), any(), any()))
+                .thenReturn(stream);
         when(stream.deltas()).thenReturn(Flux.just("answer [1]"));
         var controller = new KnowledgeController(knowledge, mock(KnowledgeBuildService.class),
                 mock(ProjectFactService.class), execution, json);

@@ -96,7 +96,8 @@ public class InterviewQuestionService {
         String question = requireQuestion(aiScenarioExecution.executeText(
                 AiScenario.INTERVIEW_QUESTION, userId,
                 session.getAiConnectionIdSnapshot(), pair.system(), pair.user(),
-                MAX_OUTPUT_TOKENS, MODEL_TIMEOUT));
+                MAX_OUTPUT_TOKENS, MODEL_TIMEOUT,
+                com.orbitworkbench.ai.application.WebSearchMode.DISABLED, pair.memory()));
 
         InterviewTurnRecord turn = turnWriteService.append(userId, sessionId, turnType,
                 question, expectedTurnCount);
@@ -146,7 +147,7 @@ public class InterviewQuestionService {
         long start = System.nanoTime();
         Long auditId = aiCallAuditRecorder.start(userId, AiScenario.INTERVIEW_QUESTION, route,
                 requestChars, aiCallAuditRecorder.snapshotJson(AiScenario.INTERVIEW_QUESTION, route,
-                        MAX_OUTPUT_TOKENS, true, webSearch));
+                        MAX_OUTPUT_TOKENS, true, webSearch, pair.memory()));
         int turnNo = expectedTurnCount + 1;
         ServerSentEvent<String> startEvent = sse("start", "{\"turnNo\":" + turnNo
                 + ",\"type\":\"" + turnType + "\"}");
@@ -274,10 +275,12 @@ public class InterviewQuestionService {
         if (!knowledgeContext.isEmpty()) {
             user.append(knowledgeContext).append('\n');
         }
-        // 个人记忆层：只注入用户确认过的画像事实，预算封顶；无事实时整段省略
-        String memoryContext = userFactService.confirmedContext(session.getUserId());
-        if (!memoryContext.isEmpty()) {
-            user.append(memoryContext).append('\n');
+        // 个人记忆层：只注入用户确认过的画像事实，预算封顶；无事实时整段省略。
+        // V45：memory 上下文随 PromptPair 带回，审计快照记录「这次模型看到了哪些记忆」。
+        com.orbitworkbench.ai.application.MemoryContext memory =
+                userFactService.confirmedContext(session.getUserId());
+        if (memory.present()) {
+            user.append(memory.text()).append('\n');
         }
         user.append("已进行的问答（可为空）：\n");
         for (InterviewTurnRecord turn : turns) {
@@ -295,7 +298,7 @@ public class InterviewQuestionService {
         if (instruction != null && !instruction.isBlank()) {
             user.append("补充要求：").append(instruction.trim());
         }
-        return new PromptPair(system, user.toString());
+        return new PromptPair(system, user.toString(), memory);
     }
 
     /** 从面试官快照提取人设与重点考查方向；旧会话无快照时为空。 */
@@ -415,7 +418,8 @@ public class InterviewQuestionService {
         return value.length() <= maxLength ? value : value.substring(0, maxLength) + "…";
     }
 
-    private record PromptPair(String system, String user) {}
+    private record PromptPair(String system, String user,
+                              com.orbitworkbench.ai.application.MemoryContext memory) {}
 
     private String requireQuestion(String rawOutput) {
         String question = AiOutputCleaner.cleanQuestion(rawOutput, QUESTION_MAX_LENGTH);

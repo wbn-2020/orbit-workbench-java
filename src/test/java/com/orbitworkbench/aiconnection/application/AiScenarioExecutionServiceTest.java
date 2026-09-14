@@ -58,7 +58,7 @@ class AiScenarioExecutionServiceTest {
         when(router.resolve(any(), any(), any())).thenReturn(
                 new ResolvedRoute(PRIMARY, null, false, AiScenarioRouter.SOURCE_DEFAULT));
         when(recorder.start(any(), any(), any(), anyInt(), any())).thenReturn(55L);
-        when(recorder.snapshotJson(any(), any(), anyInt(), anyBoolean())).thenReturn("{}");
+        when(recorder.snapshotJson(any(), any(), anyInt(), anyBoolean(), any(), any())).thenReturn("{}");
     }
 
     @Test

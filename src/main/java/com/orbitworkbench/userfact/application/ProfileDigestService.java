@@ -90,17 +90,18 @@ public class ProfileDigestService {
 
     /**
      * 注入链路读取口（UserFactService.confirmedContext 调用）：
-     * 快照存在且与当前 CONFIRMED 集合一致时返回快照正文，否则返回 null 走逐条模式。
+     * 快照存在且与当前 CONFIRMED 集合一致时返回快照记录（正文 + 来源事实 id，V45 溯源），
+     * 否则返回 null 走逐条模式。
      */
     @Transactional(readOnly = true)
-    public String freshDigestForInjection(Long userId) {
+    public UserProfileDigestRecord freshDigestForInjection(Long userId) {
         UserProfileDigestRecord record = digestMapper.findByUser(userId);
         if (record == null) {
             return null;
         }
         Set<Long> snapshotIds = parseIds(record.getSourceFactIds());
         Set<Long> nowIds = currentConfirmedIds(userId);
-        return snapshotIds.equals(nowIds) ? record.getDigest() : null;
+        return snapshotIds.equals(nowIds) ? record : null;
     }
 
     private DigestResponse persist(Long userId, String output, List<UserFactRecord> facts) {

@@ -145,7 +145,8 @@ class UserFactServiceTest {
     @Test
     void confirmedContextRespectsEmptyAndFormatting() {
         when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of());
-        assertEquals("", service.confirmedContext(1L));
+        assertEquals(com.orbitworkbench.ai.application.MemoryContext.NONE,
+                service.confirmedContext(1L));
 
         UserFactRecord fact = analyzedFact(1L);
         fact.setFactType("GOAL");
@@ -153,22 +154,31 @@ class UserFactServiceTest {
         fact.setContent("目标是从 Java 后端转向 AI 应用开发");
         fact.setConfirmationStatus(UserFactStatus.CONFIRMED);
         when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of(fact));
-        String context = service.confirmedContext(1L);
-        assertTrue(context.startsWith("候选人已确认的画像事实"));
-        assertTrue(context.contains("[GOAL]"));
-        assertTrue(context.contains("转 AI 方向"));
+        com.orbitworkbench.ai.application.MemoryContext memory = service.confirmedContext(1L);
+        assertTrue(memory.text().startsWith("候选人已确认的画像事实"));
+        assertTrue(memory.text().contains("[GOAL]"));
+        assertTrue(memory.text().contains("转 AI 方向"));
+        // V45 溯源：FACTS 模式记录实际注入的事实 id
+        assertEquals("FACTS", memory.mode());
+        assertEquals(List.of(1L), memory.factIds());
+        assertEquals(0, memory.staleCount());
     }
 
     @Test
     void confirmedContextPrefersFreshDigestOverPerFactListing() {
-        when(profileDigestService.freshDigestForInjection(1L))
-                .thenReturn("## 画像\nJava 后端转 AI 应用开发。");
+        com.orbitworkbench.userfact.domain.UserProfileDigestRecord digest =
+                new com.orbitworkbench.userfact.domain.UserProfileDigestRecord();
+        digest.setDigest("## 画像\nJava 后端转 AI 应用开发。");
+        digest.setSourceFactIds("[5,6]");
+        when(profileDigestService.freshDigestForInjection(1L)).thenReturn(digest);
 
-        String context = service.confirmedContext(1L);
+        com.orbitworkbench.ai.application.MemoryContext memory = service.confirmedContext(1L);
 
-        assertTrue(context.startsWith("候选人画像快照"));
-        assertTrue(context.contains("Java 后端转 AI 应用开发"));
-        // 快照命中时不再读逐条事实
+        assertTrue(memory.text().startsWith("候选人画像快照"));
+        assertTrue(memory.text().contains("Java 后端转 AI 应用开发"));
+        // V45 溯源：DIGEST 模式带快照来源 id 集，且不再读逐条事实
+        assertEquals("DIGEST", memory.mode());
+        assertEquals(List.of(5L, 6L), memory.factIds());
         verify(factMapper, never()).listConfirmed(anyLong(), anyInt());
     }
 
@@ -182,10 +192,10 @@ class UserFactServiceTest {
         fact.setConfirmationStatus(UserFactStatus.CONFIRMED);
         when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of(fact));
 
-        String context = service.confirmedContext(1L);
+        com.orbitworkbench.ai.application.MemoryContext memory = service.confirmedContext(1L);
 
-        assertTrue(context.startsWith("候选人已确认的画像事实"));
-        assertTrue(context.contains("在职"));
+        assertTrue(memory.text().startsWith("候选人已确认的画像事实"));
+        assertTrue(memory.text().contains("在职"));
     }
 
     @Test
@@ -225,13 +235,17 @@ class UserFactServiceTest {
         fresh.setLastSeenAt(fresh.getConfirmedAt());
         when(factMapper.listConfirmed(1L, 10)).thenReturn(List.of(stale, fresh));
 
-        String context = service.confirmedContext(1L);
+        com.orbitworkbench.ai.application.MemoryContext memory = service.confirmedContext(1L);
+        String context = memory.text();
 
         assertTrue(context.contains("可能已过时"), "陈旧事实应带时效标注：" + context);
         // 新鲜事实紧跟其后，不应被标注
         int freshIdx = context.indexOf("近期目标");
         String afterFresh = context.substring(freshIdx);
         assertFalse(afterFresh.contains("可能已过时"), "新鲜事实不该被标注：" + afterFresh);
+        // V45 溯源：过时条数与注入 id 集如实记录
+        assertEquals(1, memory.staleCount());
+        assertEquals(List.of(20L, 21L), memory.factIds());
     }
 
     private static UserFactRecord analyzedFact(long id) {

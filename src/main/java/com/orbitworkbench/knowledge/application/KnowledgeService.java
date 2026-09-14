@@ -60,10 +60,13 @@ public class KnowledgeService {
         this.userFactService = userFactService;
     }
 
-    /** 个人记忆层注入：只带用户确认过的画像事实，无事实返回空串。 */
-    private String memoryContext(Long userId) {
-        String memory = userFactService.confirmedContext(userId);
-        return memory.isEmpty() ? "" : memory + '\n';
+    /** 个人记忆层注入（V45 溯源）：只带用户确认过的画像事实/编译快照，NONE 表示本次不注入。 */
+    private com.orbitworkbench.ai.application.MemoryContext memoryContext(Long userId) {
+        return userFactService.confirmedContext(userId);
+    }
+
+    private static String memoryBlock(com.orbitworkbench.ai.application.MemoryContext memory) {
+        return memory.present() ? memory.text() + '\n' : "";
     }
 
     @Transactional
@@ -127,14 +130,17 @@ public class KnowledgeService {
                     .append(snippet(chunk.getContent(), 1200)).append("\n\n");
         }
 
+        com.orbitworkbench.ai.application.MemoryContext memory = memoryContext(userId);
         String answer = aiScenarioExecution.executeText(AiScenario.KNOWLEDGE_ANSWER, userId, null,
-                ANSWER_SYSTEM_PROMPT, memoryContext(userId) + "资料：\n" + context + "\n问题：" + keyword,
-                ANSWER_MAX_TOKENS, ANSWER_TIMEOUT).trim();
+                ANSWER_SYSTEM_PROMPT, memoryBlock(memory) + "资料：\n" + context + "\n问题：" + keyword,
+                ANSWER_MAX_TOKENS, ANSWER_TIMEOUT,
+                com.orbitworkbench.ai.application.WebSearchMode.DISABLED, memory).trim();
         return new AskResponse(answer, false, sources);
     }
 
-    /** 流式问答的准备结果：命中的来源与拼好的上下文。空命中时 sources 为空、insufficient 为 true。 */
-    public record AskStreamPreparation(List<SourceItem> sources, String userPrompt, boolean insufficient) {}
+    /** 流式问答的准备结果：命中的来源、拼好的上下文与记忆溯源（V45）。空命中时 sources 为空、insufficient 为 true。 */
+    public record AskStreamPreparation(List<SourceItem> sources, String userPrompt, boolean insufficient,
+                                       com.orbitworkbench.ai.application.MemoryContext memory) {}
 
     /**
      * 流式问答第一步：检索与上下文准备（同步、快）。命中为空直接走「资料不足」，
@@ -144,7 +150,8 @@ public class KnowledgeService {
         String keyword = question.trim();
         List<KnowledgeChunkRecord> chunks = searchSafely(userId, projectVersionId, keyword);
         if (chunks.isEmpty()) {
-            return new AskStreamPreparation(List.of(), "", true);
+            return new AskStreamPreparation(List.of(), "", true,
+                    com.orbitworkbench.ai.application.MemoryContext.NONE);
         }
         List<SourceItem> sources = new ArrayList<>();
         StringBuilder context = new StringBuilder();
@@ -156,8 +163,9 @@ public class KnowledgeService {
                     .append(" 第").append(chunk.getChunkNo()).append("段\n")
                     .append(snippet(chunk.getContent(), 1200)).append("\n\n");
         }
+        com.orbitworkbench.ai.application.MemoryContext memory = memoryContext(userId);
         return new AskStreamPreparation(sources,
-                memoryContext(userId) + "资料：\n" + context + "\n问题：" + keyword, false);
+                memoryBlock(memory) + "资料：\n" + context + "\n问题：" + keyword, false, memory);
     }
 
     /** 流式问答使用的系统提示词（Controller 开流用）。 */
