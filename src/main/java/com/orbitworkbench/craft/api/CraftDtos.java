@@ -85,4 +85,21 @@ public final class CraftDtos {
             List<WeaknessCraftRecommendation> items,
             String basis
     ) {}
+
+    /**
+     * V54：一条已练熟套路的「练前后对比」证据卡。维度为套路文本关联出的主维度；
+     * 前后平均分按练熟时刻切分历史出分报告复算。status 为诚实口径：
+     * IMPROVED / DECLINED / FLAT（变化在噪声内）/ INSUFFICIENT（任一侧无样本，不下结论）。
+     */
+    public record CraftEffectResponse(
+            Long craftId,
+            String dimension,
+            int beforeCount,
+            Integer beforeAvg,
+            int afterCount,
+            Integer afterAvg,
+            String status
+    ) {}
+
+    public record CraftEffectsResponse(List<CraftEffectResponse> items) {}
 }

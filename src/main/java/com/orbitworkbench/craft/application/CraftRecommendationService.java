@@ -35,19 +35,7 @@ public class CraftRecommendationService {
     private static final int MAX_DIMENSIONS = 3;
     private static final int RECENT_REPORT_LIMIT = 5;
 
-    /** 维度 → 套路文本关键词。与 11 维评分口径（v1 归档 06）对齐，只列可被套路命中的词。 */
-    private static final Map<String, Set<String>> DIMENSION_KEYWORDS = Map.ofEntries(
-            Map.entry("排障与异常恢复", Set.of("排查", "故障", "异常", "事故", "定位", "恢复", "兜底")),
-            Map.entry("表达结构", Set.of("讲述", "表达", "结构化", "话术", "STAR", "项目介绍", "沟通")),
-            Map.entry("项目实践能力", Set.of("项目", "落地", "实践", "上线", "交付")),
-            Map.entry("架构取舍", Set.of("架构", "取舍", "选型", "方案对比")),
-            Map.entry("原理理解", Set.of("原理", "底层", "机制", "源码")),
-            Map.entry("实现深度", Set.of("实现", "编码", "性能", "调优")),
-            Map.entry("业务理解", Set.of("业务", "价值", "场景")),
-            Map.entry("边界意识", Set.of("边界", "并发", "幂等", "异常输入")),
-            Map.entry("问题分析", Set.of("分析", "拆解", "假设", "验证")),
-            Map.entry("技术正确性", Set.of("验证", "测试", "回归", "正确")),
-            Map.entry("方案完整性", Set.of("方案", "完整性", "权衡", "备选")));
+    /** 维度 → 套路文本关键词在 CraftLexicon 共享（V54 证据链用同一张表，两方向判定不漂移）。 */
 
     private final InterviewReportMapper reportMapper;
     private final CraftNoteMapper craftMapper;
@@ -130,7 +118,7 @@ public class CraftRecommendationService {
 
     /** 命中数最高的未使用套路；同分时按库内顺序（置顶在前）取先者。命中数为 0 不算匹配。 */
     private CraftNoteRecord bestMatch(List<CraftNoteRecord> pool, Set<Long> used, String dimension) {
-        Set<String> keywords = DIMENSION_KEYWORDS.get(dimension);
+        Set<String> keywords = CraftLexicon.DIMENSION_KEYWORDS.get(dimension);
         if (keywords == null || keywords.isEmpty()) {
             return null;
         }
@@ -140,25 +128,13 @@ public class CraftRecommendationService {
             if (used.contains(craft.getId()) || craft.getPracticeCount() >= 1) {
                 continue; // 已练熟的不再推荐；同一次里不重复推荐
             }
-            int hits = hits(keywords, craft);
+            int hits = CraftLexicon.hits(keywords, craft);
             if (hits > bestHits) {
                 best = craft;
                 bestHits = hits;
             }
         }
         return best;
-    }
-
-    private int hits(Set<String> keywords, CraftNoteRecord craft) {
-        String haystack = (craft.getTitle() + " " + craft.getWhenToUse() + " "
-                + craft.getContent() + " " + craft.getTagsJson()).toLowerCase();
-        int hits = 0;
-        for (String keyword : keywords) {
-            if (haystack.contains(keyword.toLowerCase())) {
-                hits += 1;
-            }
-        }
-        return hits;
     }
 
     private String joinDimensions(List<Map.Entry<String, Integer>> weak) {

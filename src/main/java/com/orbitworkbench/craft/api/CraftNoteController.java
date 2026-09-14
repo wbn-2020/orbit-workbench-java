@@ -1,11 +1,13 @@
 package com.orbitworkbench.craft.api;
 
+import com.orbitworkbench.craft.api.CraftDtos.CraftEffectsResponse;
 import com.orbitworkbench.craft.api.CraftDtos.CraftListResponse;
 import com.orbitworkbench.craft.api.CraftDtos.CraftNoteResponse;
 import com.orbitworkbench.craft.api.CraftDtos.CraftRecommendationsResponse;
 import com.orbitworkbench.craft.api.CraftDtos.DistillCraftResponse;
 import com.orbitworkbench.craft.api.CraftDtos.PinCraftRequest;
 import com.orbitworkbench.craft.api.CraftDtos.SaveCraftRequest;
+import com.orbitworkbench.craft.application.CraftEffectService;
 import com.orbitworkbench.craft.application.CraftNoteService;
 import com.orbitworkbench.craft.application.CraftRecommendationService;
 import com.orbitworkbench.identity.application.OrbitUserDetails;
@@ -27,13 +29,16 @@ public class CraftNoteController {
 
     private final CraftNoteService service;
     private final CraftRecommendationService recommendationService;
+    private final CraftEffectService effectService;
     private final com.orbitworkbench.studyplan.application.StudyTaskService studyTaskService;
 
     public CraftNoteController(CraftNoteService service,
                                CraftRecommendationService recommendationService,
+                               CraftEffectService effectService,
                                com.orbitworkbench.studyplan.application.StudyTaskService studyTaskService) {
         this.service = service;
         this.recommendationService = recommendationService;
+        this.effectService = effectService;
         this.studyTaskService = studyTaskService;
     }
 
@@ -46,6 +51,12 @@ public class CraftNoteController {
     @GetMapping("/recommendations")
     public CraftRecommendationsResponse recommendations(Authentication authentication) {
         return recommendationService.recommend(userId(authentication));
+    }
+
+    /** V54：已练熟套路的练前后分数对比（纯派生只读；相关非因果，文案由前端承担诚实口径）。 */
+    @GetMapping("/effects")
+    public CraftEffectsResponse effects(Authentication authentication) {
+        return new CraftEffectsResponse(effectService.effects(userId(authentication)));
     }
 
     @PostMapping
