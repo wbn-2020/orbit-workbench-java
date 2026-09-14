@@ -382,7 +382,7 @@ class InterviewSessionServiceTest {
         mockBinding(31L, 61L, "秒杀中台", 3);
 
         SessionResponse response = service.create(7L,
-                request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L))));
+                request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L, null))));
 
         ArgumentCaptor<InterviewSessionRecord> captor =
                 ArgumentCaptor.forClass(InterviewSessionRecord.class);
@@ -412,13 +412,68 @@ class InterviewSessionServiceTest {
         assertEquals(List.of(), response.projectBindings());
     }
 
+    // ---- V53：提问重点事实 ----
+
+    @Test
+    void createSnapshotsFocusFactIds() {
+        doInsertAssignsId();
+        mockBinding(31L, 61L, "秒杀中台", 3);
+
+        SessionResponse response = service.create(7L,
+                request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L, List.of(71L)))));
+
+        ArgumentCaptor<InterviewSessionRecord> captor =
+                ArgumentCaptor.forClass(InterviewSessionRecord.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertEquals(true, captor.getValue().getProjectBindingsJson().contains("\"focusFactIds\":[71]"));
+        assertEquals(List.of(71L), response.projectBindings().get(0).focusFactIds());
+    }
+
+    @Test
+    void createWithoutFocusOmitsKeyAndResponseNull() {
+        doInsertAssignsId();
+        mockBinding(31L, 61L, "秒杀中台", 3);
+
+        SessionResponse response = service.create(7L,
+                request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L, null))));
+
+        ArgumentCaptor<InterviewSessionRecord> captor =
+                ArgumentCaptor.forClass(InterviewSessionRecord.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertEquals(false, captor.getValue().getProjectBindingsJson().contains("focusFactIds"));
+        org.junit.jupiter.api.Assertions.assertNull(response.projectBindings().get(0).focusFactIds());
+    }
+
+    @Test
+    void createRejectsUnconfirmedFactAsFocus() {
+        doInsertAssignsId();
+        mockBinding(31L, 61L, "秒杀中台", 3);
+
+        // 72 是 ANALYZED、73 是 ARCHIVED：都不能当提问重点
+        ApiException exception = assertThrows(ApiException.class, () -> service.create(7L,
+                request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L, List.of(72L))))));
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, exception.getStatus());
+        verify(sessionMapper, never()).insert(any(InterviewSessionRecord.class));
+    }
+
+    @Test
+    void createRejectsTooManyFocusFacts() {
+        doInsertAssignsId();
+        mockBinding(31L, 61L, "秒杀中台", 3);
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.create(7L,
+                request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L, List.of(71L, 71L, 71L, 71L))))));
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, exception.getStatus());
+        verify(sessionMapper, never()).insert(any(InterviewSessionRecord.class));
+    }
+
     @Test
     void createRejectsUnknownProject() {
         when(projectMapper.findProjectByIdAndUserId(31L, 7L)).thenReturn(null);
 
         ApiException exception = assertThrows(ApiException.class,
                 () -> service.create(7L,
-                        request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L)))));
+                        request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L, null)))));
         assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, exception.getStatus());
         verify(sessionMapper, never()).insert(any(InterviewSessionRecord.class));
     }
@@ -435,7 +490,7 @@ class InterviewSessionServiceTest {
 
         ApiException exception = assertThrows(ApiException.class,
                 () -> service.create(7L,
-                        request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L)))));
+                        request(List.of(new InterviewDtos.ProjectBindingRequest(31L, 61L, null)))));
         assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, exception.getStatus());
         verify(sessionMapper, never()).insert(any(InterviewSessionRecord.class));
     }
@@ -444,8 +499,8 @@ class InterviewSessionServiceTest {
     void createRejectsDuplicateBinding() {
         ApiException exception = assertThrows(ApiException.class,
                 () -> service.create(7L, request(List.of(
-                        new InterviewDtos.ProjectBindingRequest(31L, 61L),
-                        new InterviewDtos.ProjectBindingRequest(31L, 61L)))));
+                        new InterviewDtos.ProjectBindingRequest(31L, 61L, null),
+                        new InterviewDtos.ProjectBindingRequest(31L, 61L, null)))));
         assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, exception.getStatus());
         verify(sessionMapper, never()).insert(any(InterviewSessionRecord.class));
     }

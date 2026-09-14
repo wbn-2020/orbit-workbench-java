@@ -2,6 +2,7 @@ package com.orbitworkbench.interview.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -118,6 +119,37 @@ class InterviewQuestionServiceTest {
         assertEquals(true, system.getValue().contains("重点考查方向：架构取舍"));
         assertEquals(true, user.getValue().contains("秒杀中台"));
         assertEquals(true, user.getValue().contains("高并发链路：秒杀核心链路设计"));
+    }
+
+    @Test
+    void promptSpotlightsFocusFactsFirst() {
+        // V53：快照带 focusFactIds 时，重点事实排最前、标 ★重点，并追加深挖指令；
+        // 没有重点时提示词保持原样，不出现 ★ 字样。
+        InterviewSessionRecord session = runningSession();
+        session.setTopicMode("PROJECT_DEEP_DIVE");
+        session.setProjectBindingsJson(
+                "[{\"projectName\":\"秒杀中台\",\"versionNumber\":2,\"facts\":["
+                        + "{\"factId\":1,\"title\":\"普通事实\",\"content\":\"日常内容\"},"
+                        + "{\"factId\":2,\"title\":\"热点库存扣减\",\"content\":\"分桶避免热点行锁\"}"
+                        + "],\"focusFactIds\":[2]}]");
+        when(sessionMapper.findById(21L)).thenReturn(session);
+        when(turnMapper.countBySession(21L)).thenReturn(0);
+        when(turnMapper.listBySession(21L)).thenReturn(List.of());
+        stubExecution("你处理过库存扣减的热点问题吗？讲讲分桶方案？");
+        stubInsertId(141L);
+        when(turnMapper.findById(141L)).thenReturn(savedTurn(141L, InterviewTurnType.MAIN,
+                "你处理过库存扣减的热点问题吗？讲讲分桶方案？"));
+
+        service.next(7L, 21L, new NextQuestionRequest("MAIN", null));
+
+        ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
+        verify(aiScenarioExecution).executeText(eq(AiScenario.INTERVIEW_QUESTION), eq(7L), eq(5L),
+                any(), user.capture(), anyInt(), any(Duration.class), any(), any());
+        assertEquals(true, user.getValue().contains("- ★重点 热点库存扣减"));
+        assertEquals(true, user.getValue().contains("带 ★重点 标记的是候选人主动指定的深挖方向"));
+        // 重点事实排在普通事实之前
+        assertTrue(user.getValue().indexOf("★重点 热点库存扣减")
+                < user.getValue().indexOf("- 普通事实"));
     }
 
     @Test

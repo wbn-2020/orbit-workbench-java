@@ -26,7 +26,10 @@ import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.shared.api.RequestEnums;
 import com.orbitworkbench.userfact.application.UserFactService;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
@@ -389,24 +392,56 @@ public class InterviewQuestionService {
                 bindingCount++;
                 context.append("项目：").append(textOr(binding.get("projectName"), "未命名"))
                         .append("（V").append(binding.path("versionNumber").asInt(0)).append("）\n");
-                JsonNode facts = binding.get("facts");
-                int factCount = 0;
-                if (facts != null && facts.isArray()) {
-                    for (JsonNode fact : facts) {
-                        if (factCount >= 3) {
-                            break;
-                        }
-                        factCount++;
-                        context.append("- ").append(textOr(fact.get("title"), "事实"))
-                                .append("：").append(limit(textOr(fact.get("content"), ""), 300))
-                                .append('\n');
+                // V53：提问重点事实排最前并单独标注，其余按原顺序补足
+                List<JsonNode> facts = new ArrayList<>();
+                if (binding.get("facts") != null && binding.get("facts").isArray()) {
+                    binding.get("facts").forEach(facts::add);
+                }
+                Set<Long> focusIds = focusFactIds(binding.get("focusFactIds"));
+                List<JsonNode> ordered = new ArrayList<>();
+                for (JsonNode fact : facts) {
+                    if (focusIds.contains(fact.path("factId").asLong(-1))) {
+                        ordered.add(fact);
                     }
                 }
+                for (JsonNode fact : facts) {
+                    if (!focusIds.contains(fact.path("factId").asLong(-1))) {
+                        ordered.add(fact);
+                    }
+                }
+                int factCount = 0;
+                for (JsonNode fact : ordered) {
+                    if (factCount >= 3) {
+                        break;
+                    }
+                    factCount++;
+                    boolean focus = focusIds.contains(fact.path("factId").asLong(-1));
+                    context.append(focus ? "- ★重点 " : "- ").append(textOr(fact.get("title"), "事实"))
+                            .append("：").append(limit(textOr(fact.get("content"), ""), 300))
+                            .append('\n');
+                }
             }
-            return context.toString();
+            if (!context.toString().contains("★重点")) {
+                return context.toString();
+            }
+            return context + "带 ★重点 标记的是候选人主动指定的深挖方向：主问题与追问应优先围绕它们展开。\n";
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    /** V53：读取绑定快照里的提问重点事实 id；缺失或脏数据返回空集。 */
+    private Set<Long> focusFactIds(JsonNode node) {
+        if (node == null || !node.isArray()) {
+            return Set.of();
+        }
+        Set<Long> ids = new HashSet<>();
+        node.forEach(item -> {
+            if (item.canConvertToLong()) {
+                ids.add(item.asLong());
+            }
+        });
+        return ids;
     }
 
     private String textOr(JsonNode node, String fallback) {

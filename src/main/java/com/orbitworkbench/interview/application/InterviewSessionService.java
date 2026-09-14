@@ -57,6 +57,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class InterviewSessionService {
 
     private static final int MAX_FACTS_PER_BINDING = 50;
+    /** V53：提问重点每绑定最多条数（与 DTO @Size(max=3) 同口径，服务层再守一道）。 */
+    private static final int MAX_FOCUS_FACTS_PER_BINDING = 3;
 
     private final InterviewSessionMapper sessionMapper;
     private final InterviewTurnMapper turnMapper;
@@ -342,10 +344,12 @@ public class InterviewSessionService {
                         "绑定的项目版本不存在");
             }
             List<Map<String, Object>> factSnapshots = new ArrayList<>();
+            List<Long> confirmedFactIds = new ArrayList<>();
             for (ProjectFactRecord fact : projectFactMapper.listByVersion(userId, version.getId())) {
                 if (fact.getConfirmationStatus() != FactStatus.CONFIRMED) {
                     continue;
                 }
+                confirmedFactIds.add(fact.getId());
                 if (factSnapshots.size() >= MAX_FACTS_PER_BINDING) {
                     break;
                 }
@@ -356,12 +360,30 @@ public class InterviewSessionService {
                 factSnapshot.put("content", fact.getContent());
                 factSnapshots.add(factSnapshot);
             }
+            // V53：提问重点只接受该版本已确认事实；选了非法 id 直接 400，静默丢弃会让用户以为生效了
+            List<Long> focusFactIds = binding.focusFactIds() == null
+                    ? List.of() : binding.focusFactIds().stream().filter(java.util.Objects::nonNull).toList();
+            if (!focusFactIds.isEmpty()) {
+                if (focusFactIds.size() > MAX_FOCUS_FACTS_PER_BINDING) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.INVALID_REQUEST,
+                            "提问重点最多选 " + MAX_FOCUS_FACTS_PER_BINDING + " 条");
+                }
+                for (Long factId : focusFactIds) {
+                    if (!confirmedFactIds.contains(factId)) {
+                        throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.INVALID_REQUEST,
+                                "提问重点必须是该版本已确认的项目事实");
+                    }
+                }
+            }
             Map<String, Object> snapshot = new LinkedHashMap<>();
             snapshot.put("projectId", project.getId());
             snapshot.put("projectName", project.getName());
             snapshot.put("versionId", version.getId());
             snapshot.put("versionNumber", version.getVersionNumber());
             snapshot.put("facts", factSnapshots);
+            if (!focusFactIds.isEmpty()) {
+                snapshot.put("focusFactIds", focusFactIds);
+            }
             snapshotBindings.add(snapshot);
         }
         try {

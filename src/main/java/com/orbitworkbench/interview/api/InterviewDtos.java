@@ -19,7 +19,12 @@ public final class InterviewDtos {
 
     public record ProjectBindingRequest(
             @NotNull Long projectId,
-            @NotNull Long versionId
+            @NotNull Long versionId,
+            /**
+             * V53：提问重点事实 id（最多 3 条，须是该版本已确认事实）。
+             * 面试出题时优先围绕它们深挖——「项目资料整理好了，但面试问不到点上」的出口。
+             */
+            @Size(max = 3) List<@NotNull Long> focusFactIds
     ) {}
 
     public record CreateSessionRequest(
@@ -65,7 +70,9 @@ public final class InterviewDtos {
             String projectName,
             Long versionId,
             Integer versionNumber,
-            int factCount
+            int factCount,
+            /** V53：创建会话时指定的提问重点事实 id；未指定时键缺席（旧会话向前兼容）。 */
+            List<Long> focusFactIds
     ) {}
 
     public record WebSearchOutcomeResponse(
@@ -166,7 +173,9 @@ public final class InterviewDtos {
                                 binding.projectName,
                                 binding.versionId,
                                 binding.versionNumber,
-                                binding.facts == null ? 0 : binding.facts.size()))
+                                binding.facts == null ? 0 : binding.facts.size(),
+                                binding.focusFactIds == null || binding.focusFactIds.isEmpty()
+                                        ? null : binding.focusFactIds))
                         .toList();
             } catch (Exception ignored) {
                 return List.of();
@@ -181,6 +190,7 @@ public final class InterviewDtos {
         public Long versionId;
         public Integer versionNumber;
         public List<Object> facts;
+        public List<Long> focusFactIds;
     }
 
     private static final com.fasterxml.jackson.core.type.TypeReference<List<BindingSnapshotReader>>
