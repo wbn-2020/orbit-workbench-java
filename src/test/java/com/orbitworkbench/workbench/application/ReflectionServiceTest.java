@@ -137,6 +137,41 @@ class ReflectionServiceTest {
         assertEquals(7, response.daily().size());
     }
 
+    // ---- V56：成长沉淀三信号 ----
+
+    @Test
+    void growthCountsThreeWindowSignals() {
+        when(preferenceService.timezone(1L)).thenReturn(ZoneId.of("UTC"));
+        when(mapper.countNewConfirmedFacts(eq(1L), any(), any())).thenReturn(2L);
+        when(mapper.countCraftsPracticed(eq(1L), any(), any())).thenReturn(1L);
+        when(mapper.countPracticeTasksCompleted(eq(1L), any(), any())).thenReturn(3L);
+
+        var response = serviceAt("2026-09-13T12:00:00Z").reflect(1L, "week", 0);
+
+        assertEquals(2, response.growth().newFacts());
+        assertEquals(1, response.growth().craftsPracticed());
+        assertEquals(3, response.growth().practiceTasksDone());
+    }
+
+    @Test
+    void growthUsesCurrentWindowAndPreviousTotalsSumSignals() {
+        when(preferenceService.timezone(1L)).thenReturn(ZoneId.of("UTC"));
+        // 本期：事实 1；上期：套路 2 + 练习 1 → previous.growthSignals=3
+        when(mapper.countNewConfirmedFacts(eq(1L), any(), any())).thenReturn(1L, 0L);
+        when(mapper.countCraftsPracticed(eq(1L), any(), any())).thenReturn(0L, 2L);
+        when(mapper.countPracticeTasksCompleted(eq(1L), any(), any())).thenReturn(0L, 1L);
+
+        var response = serviceAt("2026-09-13T12:00:00Z").reflect(1L, "week", 0);
+
+        assertEquals(1, response.growth().newFacts());
+        assertEquals(3, response.previous().growthSignals());
+        // 本期与上期各调一轮：同一查询被以不同窗口调用两次，第一次是本期
+        ArgumentCaptor<Instant> from = ArgumentCaptor.forClass(Instant.class);
+        verify(mapper, times(2)).countNewConfirmedFacts(eq(1L), from.capture(), any());
+        assertEquals(Instant.parse("2026-09-07T00:00:00Z"), from.getAllValues().get(0));
+        assertEquals(Instant.parse("2026-08-31T00:00:00Z"), from.getAllValues().get(1));
+    }
+
     private static ReportMetricRow report(String status, Integer score, String recommendation,
                                           String ruleVersion) {
         ReportMetricRow row = new ReportMetricRow();

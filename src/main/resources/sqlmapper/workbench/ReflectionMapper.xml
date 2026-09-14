@@ -114,4 +114,34 @@
         WHERE user_id = #{userId}
           AND status IN ('PLANNED', 'IN_PROGRESS', 'POSTPONED')
     </select>
+
+    <!-- V56 成长沉淀三信号：都按「事件时间落在 [start,end) 窗口内」计数，口径与上方各查询一致。 -->
+
+    <!-- 新确认且仍生效的画像事实：confirmation_status=CONFIRMED 让后来归档的不计入（归档=不再沉淀）。 -->
+    <select id="countNewConfirmedFacts" resultType="long">
+        SELECT COUNT(*)
+        FROM user_fact
+        WHERE user_id = #{userId}
+          AND confirmation_status = 'CONFIRMED'
+          AND confirmed_at &gt;= #{start} AND confirmed_at &lt; #{end}
+    </select>
+
+    <!-- 窗口内练过的套路：按 last_practiced_at 归属，一条套路多次练熟只算一次（COUNT 行非次数）。 -->
+    <select id="countCraftsPracticed" resultType="long">
+        SELECT COUNT(*)
+        FROM craft_note
+        WHERE user_id = #{userId}
+          AND confirmation_status = 'CONFIRMED'
+          AND last_practiced_at &gt;= #{start} AND last_practiced_at &lt; #{end}
+    </select>
+
+    <!-- 窗口内完成的练习任务：source_type=CRAFT 区分「练习」与报告生成的普通复习任务。 -->
+    <select id="countPracticeTasksCompleted" resultType="long">
+        SELECT COUNT(*)
+        FROM study_task
+        WHERE user_id = #{userId}
+          AND source_type = 'CRAFT'
+          AND status = 'COMPLETED'
+          AND updated_at &gt;= #{start} AND updated_at &lt; #{end}
+    </select>
 </mapper>

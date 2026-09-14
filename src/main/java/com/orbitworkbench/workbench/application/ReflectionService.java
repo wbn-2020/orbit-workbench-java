@@ -5,6 +5,7 @@ import com.orbitworkbench.preference.application.PreferenceService;
 import com.orbitworkbench.shared.api.ApiException;
 import com.orbitworkbench.shared.api.ErrorCode;
 import com.orbitworkbench.workbench.api.ReflectionDtos.DailyPoint;
+import com.orbitworkbench.workbench.api.ReflectionDtos.GrowthStats;
 import com.orbitworkbench.workbench.api.ReflectionDtos.InterviewStats;
 import com.orbitworkbench.workbench.api.ReflectionDtos.LearningStats;
 import com.orbitworkbench.workbench.api.ReflectionDtos.PeriodTotals;
@@ -100,14 +101,23 @@ public class ReflectionService {
         StudyStats study = collectStudy(userId, from, to);
         List<ReportMetricRow> reportRows = mapper.listReports(userId, from, to);
         InterviewStats interview = collectInterview(reportRows);
+        GrowthStats growth = collectGrowth(userId, from, to);
         List<DailyPoint> daily = dailyPoints(userId, from, to, start, end, zone);
 
         PeriodTotals previous = previousTotals(userId, prevFrom, prevTo);
 
         return new ReflectionResponse(
                 monthly ? "month" : "week", offset, start, end, label,
-                work, learning, study, interview,
+                work, learning, study, interview, growth,
                 daily, previous, InterviewReportService.SCORING_RULE_VERSION);
+    }
+
+    /** V56：成长沉淀三信号（画像新确认 / 套路练过 / 练习任务完成），全部窗口内事件计数。 */
+    private GrowthStats collectGrowth(Long userId, Instant from, Instant to) {
+        return new GrowthStats(
+                (int) mapper.countNewConfirmedFacts(userId, from, to),
+                (int) mapper.countCraftsPracticed(userId, from, to),
+                (int) mapper.countPracticeTasksCompleted(userId, from, to));
     }
 
     private WorkStats collectWork(Long userId, Instant from, Instant to) {
@@ -228,6 +238,10 @@ public class ReflectionService {
                 study++;
             }
         }
-        return new PeriodTotals(focus, workLogs, knowledge, study);
+        // V56：上期沉淀合计——三个窗口计数相加（环比只需要总量，分项归本期展示）
+        int growth = (int) (mapper.countNewConfirmedFacts(userId, from, to)
+                + mapper.countCraftsPracticed(userId, from, to)
+                + mapper.countPracticeTasksCompleted(userId, from, to));
+        return new PeriodTotals(focus, workLogs, knowledge, study, growth);
     }
 }

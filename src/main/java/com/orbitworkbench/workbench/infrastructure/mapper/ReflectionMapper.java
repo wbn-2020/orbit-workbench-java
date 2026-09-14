@@ -43,4 +43,19 @@ public interface ReflectionMapper {
 
     /** 当前仍在进行（PLANNED/IN_PROGRESS/POSTPONED）的复习任务数，不随窗口变化。 */
     long countActiveStudyTasks(@Param("userId") Long userId);
+
+    /** V56 成长沉淀①：窗口内新确认且仍生效的画像事实（后来被归档的不算沉淀下来）。 */
+    long countNewConfirmedFacts(@Param("userId") Long userId,
+                                @Param("start") Instant start,
+                                @Param("end") Instant end);
+
+    /** V56 成长沉淀②：窗口内练过的套路（按最近练熟时间归属，多次只算一次）。 */
+    long countCraftsPracticed(@Param("userId") Long userId,
+                              @Param("start") Instant start,
+                              @Param("end") Instant end);
+
+    /** V56 成长沉淀③：窗口内完成的练习任务（COMPLETED 状态变更必写 updated_at，同复习任务口径）。 */
+    long countPracticeTasksCompleted(@Param("userId") Long userId,
+                                     @Param("start") Instant start,
+                                     @Param("end") Instant end);
 }

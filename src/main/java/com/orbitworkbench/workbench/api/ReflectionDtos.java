@@ -50,11 +50,23 @@ public final class ReflectionDtos {
             Map<String, Integer> byRecommendation
     ) {}
 
+    /**
+     * V56 成长沉淀：本窗口里「画像 / 套路 / 练习」三条新链的推进量。
+     * 三个都是窗口内事件计数（确认时刻 / 最近练熟时刻 / 完成时刻），口径与其余统计一致。
+     */
+    public record GrowthStats(
+            int newFacts,
+            int craftsPracticed,
+            int practiceTasksDone
+    ) {}
+
     public record PeriodTotals(
             int focusMinutes,
             int workLogs,
             int knowledgeCards,
-            int studyCompleted
+            int studyCompleted,
+            /** V56：上期成长沉淀合计（新事实 + 练过的套路 + 完成的练习任务），供环比。 */
+            int growthSignals
     ) {}
 
     public record ReflectionResponse(
@@ -67,6 +79,7 @@ public final class ReflectionDtos {
             LearningStats learning,
             StudyStats study,
             InterviewStats interview,
+            GrowthStats growth,
             List<DailyPoint> daily,
             PeriodTotals previous,
             String scoringRuleVersion
