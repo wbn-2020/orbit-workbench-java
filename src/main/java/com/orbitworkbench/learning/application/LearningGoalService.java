@@ -116,7 +116,15 @@ public class LearningGoalService {
             throw invalid("progress 必须在 0 到 100 之间");
         }
         mapper.updateStatusAndProgress(id, userId, status.name(), progress, Instant.now());
-        return LearningGoalResponse.from(requireOwned(userId, id));
+        return responseWithStats(userId, requireOwned(userId, id));
+    }
+
+    /**
+     * V58：单目标响应也带上拆解统计——否则 PUT/幂等重放返回体会报「taskCount=0」
+     * 而列表里明明有任务，同一目标两个端点自相矛盾。
+     */
+    private LearningGoalResponse responseWithStats(Long userId, LearningGoalRow row) {
+        return LearningGoalResponse.from(row, goalTaskStats(userId).get(row.getId()));
     }
 
     /**
