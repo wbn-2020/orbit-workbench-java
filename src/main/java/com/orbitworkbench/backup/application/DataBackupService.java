@@ -26,9 +26,27 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 数据出口：导出 / 覆盖式导入 / 清空。
  *
- * 范围是白名单里的用户维度表（当前产品的自有数据）；旧 Orbit 历史表按 ADR-0010 不纳入备份，
+ * <p>范围是白名单里的用户维度表（当前产品的自有数据）。旧 Orbit 历史表按 ADR-0010 不纳入备份，
  * 因此「清空全部数据」清的是本产品写入的数据，不会动到冻结的历史表。
- * 表名与列名都做白名单校验，导入只接受本产品导出的载荷格式。
+ *
+ * <p><b>完整性约束（由 {@code DataBackupScopeTest} 守卫）</b>：任何带 {@code user_id} 列的表
+ * 都必须出现在 {@link #USER_TABLES} 里；没有 {@code user_id}、但经外键挂在用户表下的表
+ * 必须出现在 {@link #OWNED_TABLES} 里。漏表会让「导出再导入」静默丢数据、让「清空」留下
+ * 孤儿行——V60 修的就是这类漏网（本事库、面试报告、错题重练记录等曾整体缺席）。
+ *
+ * <p>刻意不在范围内（有明确理由，不是遗漏）：
+ * <ul>
+ *   <li>{@code ai_connection} / {@code model_profile} / {@code connection_test_record}：
+ *       保存加密凭据，密文与安装态的密钥绑定（{@code CredentialCipher}），导出到文件既不可移植
+ *       也可能泄露密钥材料；属于安装配置而非成长数据。</li>
+ *   <li>{@code workspace}：建号时创建、项目创建的前置依赖（{@code IdentityService} 调
+ *       {@code createDefault}），清掉它会让应用无法再建项目，属环境必要数据。</li>
+ *   <li>{@code provider_catalog}：随迁移种子化的系统目录。</li>
+ *   <li>{@code app_user}：账号本身。本服务只处理「本账号写入的数据」，
+ *       账号删除是另一个能力（当前未提供）。</li>
+ * </ul>
+ *
+ * <p>表名与列名都做白名单校验，导入只接受本产品导出的载荷格式。
  */
 @Service
 public class DataBackupService {
@@ -39,7 +57,8 @@ public class DataBackupService {
     /** 清空操作的确认串，前端需要用户在弹窗里手动输入它。 */
     public static final String CLEAR_CONFIRM = "清空";
 
-    private static final List<String> USER_TABLES = List.of(
+    /** 直接带 user_id 的用户数据表（包可见以便范围守卫测试直接断言）。 */
+    static final List<String> USER_TABLES = List.of(
             "project",
             "project_fact",
             "user_fact",
@@ -64,17 +83,42 @@ public class DataBackupService {
             "notification",
             "user_preference",
             "ai_scenario_route",
-            "ai_call_audit");
+            "ai_call_audit",
+            // V60 补齐：以下三张是早期版本新增、当时漏进白名单的用户数据表
+            "craft_note",
+            "user_focus_note",
+            "user_profile_digest");
 
     /**
-     * 无 user_id 列、经父表间接归属的表：本表列 -> 父表（父表必有 user_id）。
+     * 无 user_id 列、经父表间接归属的表：本表外键列 -> 父表（父表必须有 user_id）。
      * 备份/清空/恢复都通过 JOIN 父表过滤。
+     *
+     * <p>父表本身也无 user_id 时，用 {@code bridgeColumn}/{@code bridgeTable} 再上溯一层
+     * （如 {@code project_file → project_version → project}）。只支持两跳：
+     * 当前产品最深的归属链就是两级，再深应先重新审视模型而不是继续加 JOIN。
+     *
+     * <p>顺序即插入顺序：父表必须排在子表之前（{@code interview_session} 等父表在
+     * {@link #USER_TABLES} 里、会先于本列表写入）。
      */
-    private static final List<OwnedTable> OWNED_TABLES = List.of(
-            new OwnedTable("interview_turn", "session_id", "interview_session"));
+    static final List<OwnedTable> OWNED_TABLES = List.of(
+            new OwnedTable("interview_turn", "session_id", "interview_session", null, null),
+            new OwnedTable("interview_report", "session_id", "interview_session", null, null),
+            new OwnedTable("practice_attempt", "practice_item_id", "practice_item", null, null),
+            new OwnedTable("resume_version", "resume_id", "resume_document", null, null),
+            new OwnedTable("job_posting_version", "job_posting_id", "job_posting", null, null),
+            new OwnedTable("project_version", "project_id", "project", null, null),
+            new OwnedTable("project_file", "project_version_id", "project_version",
+                    "project_id", "project"));
 
     /** 父表先于子表导出、后于子表清空/导入，保证外键顺序正确。 */
-    private record OwnedTable(String table, String ownerColumn, String ownerTable) {}
+    record OwnedTable(String table, String ownerColumn, String ownerTable,
+                      String bridgeColumn, String bridgeTable) {
+
+        /** 跳到最终持有 user_id 的那张表：两跳时是 bridge 表，否则是直接父表。 */
+        String userOwnerTable() {
+            return bridgeTable != null ? bridgeTable : ownerTable;
+        }
+    }
 
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter MICROS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
@@ -100,7 +144,8 @@ public class DataBackupService {
         }
         for (OwnedTable owned : OWNED_TABLES) {
             List<Map<String, Object>> rows = mapper.selectByOwner(
-                    owned.table(), owned.ownerColumn(), owned.ownerTable(), userId);
+                    owned.table(), owned.ownerColumn(), owned.ownerTable(),
+                    owned.bridgeColumn(), owned.bridgeTable(), userId);
             List<Map<String, Object>> rendered = new ArrayList<>(rows.size());
             for (Map<String, Object> row : rows) {
                 Map<String, Object> out = new LinkedHashMap<>();
@@ -135,14 +180,7 @@ public class DataBackupService {
         long rows = 0;
         mapper.disableForeignKeyChecks();
         try {
-            for (String table : USER_TABLES) {
-                mapper.deleteByUser(table, userId);
-            }
-            // 子表在父表（interview_session）清空之后删除，避免外键悬挂
-            for (OwnedTable owned : OWNED_TABLES) {
-                rows += mapper.deleteByOwner(owned.table(), owned.ownerColumn(),
-                        owned.ownerTable(), userId);
-            }
+            deleteAllRowsForUser(userId);
             for (String table : USER_TABLES) {
                 List<Map<String, Object>> tableRows = data.get(table);
                 if (tableRows == null || tableRows.isEmpty()) {
@@ -200,6 +238,28 @@ public class DataBackupService {
         return new DataOperationSummary(countNonEmpty(data), rows);
     }
 
+    /**
+     * 删除本用户的全部产品数据（恢复与清空共用），返回删除行数。
+     *
+     * <p><b>顺序是硬约束</b>：间接归属表走 {@code JOIN 父表} 定位归属，所以必须
+     * <em>先删子表、后删父表</em>。反过来做，父行已被删掉、JOIN 匹配为空，
+     * 子表数据会整批留下成为孤儿——V60 运行验收抓到的正是这个 bug（单测用 mock
+     * 不会暴露它，只有真库 JOIN 才会）。
+     */
+    private long deleteAllRowsForUser(Long userId) {
+        long rows = 0;
+        List<OwnedTable> reverse = new ArrayList<>(OWNED_TABLES);
+        java.util.Collections.reverse(reverse);
+        for (OwnedTable owned : reverse) {
+            rows += mapper.deleteByOwner(owned.table(), owned.ownerColumn(),
+                    owned.ownerTable(), owned.bridgeColumn(), owned.bridgeTable(), userId);
+        }
+        for (String table : USER_TABLES) {
+            rows += mapper.deleteByUser(table, userId);
+        }
+        return rows;
+    }
+
     @Transactional
     public DataOperationSummary clear(Long userId, String confirm) {
         if (!CLEAR_CONFIRM.equals(confirm)) {
@@ -208,13 +268,7 @@ public class DataBackupService {
         long rows = 0;
         mapper.disableForeignKeyChecks();
         try {
-            for (String table : USER_TABLES) {
-                rows += mapper.deleteByUser(table, userId);
-            }
-            for (OwnedTable owned : OWNED_TABLES) {
-                rows += mapper.deleteByOwner(owned.table(), owned.ownerColumn(),
-                        owned.ownerTable(), userId);
-            }
+            rows += deleteAllRowsForUser(userId);
         } finally {
             mapper.enableForeignKeyChecks();
         }

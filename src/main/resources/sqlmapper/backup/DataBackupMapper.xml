@@ -26,13 +26,25 @@
     <select id="selectByOwner" resultType="java.util.LinkedHashMap">
         SELECT t.* FROM ${table} t
         JOIN ${ownerTable} o ON t.${ownerColumn} = o.id
-        WHERE o.user_id = #{userId}
+        <if test="bridgeTable != null">
+            JOIN ${bridgeTable} b ON o.${bridgeColumn} = b.id
+            WHERE b.user_id = #{userId}
+        </if>
+        <if test="bridgeTable == null">
+            WHERE o.user_id = #{userId}
+        </if>
     </select>
 
     <delete id="deleteByOwner">
         DELETE t FROM ${table} t
         JOIN ${ownerTable} o ON t.${ownerColumn} = o.id
-        WHERE o.user_id = #{userId}
+        <if test="bridgeTable != null">
+            JOIN ${bridgeTable} b ON o.${bridgeColumn} = b.id
+            WHERE b.user_id = #{userId}
+        </if>
+        <if test="bridgeTable == null">
+            WHERE o.user_id = #{userId}
+        </if>
     </delete>
 
     <insert id="insertRow">

@@ -20,16 +20,22 @@ public interface DataBackupMapper {
 
     /**
      * 无 user_id 列的表（如 interview_turn，经 session 间接归属）用此变体：
-     * {@code ownerColumn} 指定本表的归属过滤列，{@code ownerValue} 为该列值。
+     * {@code ownerColumn} 指定本表指向父表的外键列，{@code ownerTable} 为父表。
+     * 父表本身也无 user_id 时传 {@code bridgeColumn}(父表指向祖父表的外键列) 与
+     * {@code bridgeTable}(祖父表，持有 user_id)；两者为 null 表示一跳。
      */
     List<Map<String, Object>> selectByOwner(@Param("table") String table,
                                             @Param("ownerColumn") String ownerColumn,
                                             @Param("ownerTable") String ownerTable,
+                                            @Param("bridgeColumn") String bridgeColumn,
+                                            @Param("bridgeTable") String bridgeTable,
                                             @Param("userId") Long userId);
 
     int deleteByOwner(@Param("table") String table,
                       @Param("ownerColumn") String ownerColumn,
                       @Param("ownerTable") String ownerTable,
+                      @Param("bridgeColumn") String bridgeColumn,
+                      @Param("bridgeTable") String bridgeTable,
                       @Param("userId") Long userId);
 
     int insertRow(@Param("table") String table,

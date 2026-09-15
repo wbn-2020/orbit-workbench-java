@@ -22,8 +22,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 @ExtendWith(MockitoExtension.class)
+// 本类多数用例只关心「调了哪些删除」，其余表用宽松桩即可
+@MockitoSettings(strictness = Strictness.LENIENT)
 class DataBackupServiceTest {
 
     @Mock
@@ -54,28 +58,86 @@ class DataBackupServiceTest {
         turn.put("id", 11L);
         turn.put("session_id", 21L);
         turn.put("question", "秒杀如何防超卖？");
-        when(mapper.selectByOwner("interview_turn", "session_id", "interview_session", 1L))
-                .thenReturn(List.of(turn));
+        when(mapper.selectByOwner("interview_turn", "session_id", "interview_session",
+                null, null, 1L)).thenReturn(List.of(turn));
 
         BackupPayload payload = new DataBackupService(mapper).export(1L);
 
-        verify(mapper).selectByOwner("interview_turn", "session_id", "interview_session", 1L);
+        verify(mapper).selectByOwner("interview_turn", "session_id", "interview_session",
+                null, null, 1L);
         assertTrue(payload.tables().contains("interview_turn"));
         assertEquals("秒杀如何防超卖？", payload.data().get("interview_turn").get(0).get("question"));
+    }
+
+    @Test
+    void exportCoversPreviouslyMissingUserTables() {
+        // V60：这几张表曾整体缺席白名单——导出不含它们会让「导入恢复」静默丢数据
+        when(mapper.selectByUser(anyString(), eq(1L))).thenReturn(List.of());
+
+        BackupPayload payload = new DataBackupService(mapper).export(1L);
+
+        assertTrue(payload.tables().contains("craft_note"), "本事库必须可导出");
+        assertTrue(payload.tables().contains("interview_report"), "面试报告必须可导出");
+        assertTrue(payload.tables().contains("practice_attempt"), "重练记录必须可导出");
+        assertTrue(payload.tables().contains("user_focus_note"));
+        assertTrue(payload.tables().contains("user_profile_digest"));
+        assertTrue(payload.tables().contains("project_version"));
+        assertTrue(payload.tables().contains("project_file"));
+        assertTrue(payload.tables().contains("resume_version"));
+        assertTrue(payload.tables().contains("job_posting_version"));
+    }
+
+    @Test
+    void twoHopChildTableJoinsThroughBridgeOwner() {
+        // project_file 的归属是 project_version -> project（两跳），SQL 需经桥表再落到 user_id
+        when(mapper.selectByUser(anyString(), eq(1L))).thenReturn(List.of());
+        when(mapper.selectByOwner(anyString(), anyString(), anyString(),
+                any(), any(), eq(1L))).thenReturn(List.of());
+
+        new DataBackupService(mapper).export(1L);
+
+        verify(mapper).selectByOwner("project_file", "project_version_id", "project_version",
+                "project_id", "project", 1L);
     }
 
     @Test
     void clearRemovesIndirectlyOwnedTables() {
         when(mapper.deleteByUser(anyString(), eq(1L))).thenReturn(1);
         when(mapper.deleteByOwner(eq("interview_turn"), eq("session_id"),
-                eq("interview_session"), eq(1L))).thenReturn(4);
+                eq("interview_session"), eq(null), eq(null), eq(1L))).thenReturn(4);
 
         var summary = new DataBackupService(mapper).clear(1L, DataBackupService.CLEAR_CONFIRM);
 
-        verify(mapper).deleteByOwner("interview_turn", "session_id", "interview_session", 1L);
-        // USER_TABLES 24 张 + interview_turn = 25 个表位
-        assertEquals(25, summary.tables());
+        verify(mapper).deleteByOwner("interview_turn", "session_id", "interview_session",
+                null, null, 1L);
+        // 表位数 = USER_TABLES 张数 + OWNED_TABLES 张数，跟着白名单一起长
+        int expected = DataBackupService.USER_TABLES.size() + DataBackupService.OWNED_TABLES.size();
+        assertEquals(expected, summary.tables());
         assertTrue(summary.rows() >= 4);
+    }
+
+    @Test
+    void childTablesAreDeletedBeforeTheirParents() {
+        // V60 真库验收抓到的 bug：先删父表的话，子表的 JOIN 定位不到父行，
+        // 子表数据会整批残留成孤儿。顺序在这里锁死：所有子表删完，才轮到直删父表。
+        when(mapper.deleteByUser(anyString(), eq(1L))).thenReturn(0);
+        when(mapper.deleteByOwner(anyString(), anyString(), anyString(), any(), any(), eq(1L)))
+                .thenReturn(0);
+
+        new DataBackupService(mapper).clear(1L, DataBackupService.CLEAR_CONFIRM);
+
+        var inOrder = org.mockito.Mockito.inOrder(mapper);
+        // project_file 依赖 project_version（两跳），必须先于它删
+        inOrder.verify(mapper).deleteByOwner("project_file", "project_version_id", "project_version",
+                "project_id", "project", 1L);
+        inOrder.verify(mapper).deleteByOwner("project_version", "project_id", "project",
+                null, null, 1L);
+        // interview_turn 依赖 interview_session
+        inOrder.verify(mapper).deleteByOwner("interview_turn", "session_id", "interview_session",
+                null, null, 1L);
+        // 所有子表删完之后，才直删父表（按 USER_TABLES 声明序）
+        inOrder.verify(mapper).deleteByUser("project", 1L);
+        inOrder.verify(mapper).deleteByUser("interview_session", 1L);
     }
 
     @Test
