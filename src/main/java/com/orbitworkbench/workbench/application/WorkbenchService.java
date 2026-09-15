@@ -215,6 +215,6 @@ public class WorkbenchService {
             case 18, 19, 20, 21 -> "晚上好";
             default -> "夜深了";
         };
-        return part + "，保持节奏，今天也稳步积累。";
+        return part;
     }
 }
