@@ -10,7 +10,9 @@ import com.orbitworkbench.learning.api.LearningGoalDtos.CreateLearningGoalReques
 import com.orbitworkbench.learning.api.LearningGoalDtos.LearningGoalResponse;
 import com.orbitworkbench.learning.api.LearningGoalDtos.UpdateLearningGoalRequest;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,8 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 学习目标（v2 学习更新域）。新增目标默认进入 ACTIVE、进度 0；
- * 状态与进度由用户通过 PUT 推进。暂不提供删除：数据删除规则未定（D-02），
- * 用户先以 DONE 关闭目标。
+ * 无拆解任务时状态与进度由用户通过 PUT 推进。V58 起目标可拆出执行任务，
+ * 一旦有了任务，进度从任务完成数派生（读取时计算，不落派生列——V50 mastered 同一纪律）。
+ * 暂不提供删除：数据删除规则未定（D-02），用户先以 DONE 关闭目标。
  */
 @Service
 public class LearningGoalService {
@@ -28,18 +31,39 @@ public class LearningGoalService {
 
     private final LearningGoalMapper mapper;
     private final com.orbitworkbench.userfact.infrastructure.mapper.UserFactMapper userFactMapper;
+    private final com.orbitworkbench.studyplan.application.StudyTaskService studyTaskService;
 
     public LearningGoalService(LearningGoalMapper mapper,
-                               com.orbitworkbench.userfact.infrastructure.mapper.UserFactMapper userFactMapper) {
+                               com.orbitworkbench.userfact.infrastructure.mapper.UserFactMapper userFactMapper,
+                               com.orbitworkbench.studyplan.application.StudyTaskService studyTaskService) {
         this.mapper = mapper;
         this.userFactMapper = userFactMapper;
+        this.studyTaskService = studyTaskService;
     }
 
     @Transactional(readOnly = true)
     public List<LearningGoalResponse> list(Long userId) {
+        Map<Long, com.orbitworkbench.studyplan.domain.GoalTaskStats> stats = goalTaskStats(userId);
         return mapper.listByUser(userId, LIST_LIMIT, 0).stream()
-                .map(LearningGoalResponse::from)
+                .map(row -> LearningGoalResponse.from(row, stats.get(row.getId())))
                 .toList();
+    }
+
+    /** V58：目标卡任务统计按用户一次取回（进度派生的单一来源，经 StudyTaskService 读投影不直连 mapper）。 */
+    private Map<Long, com.orbitworkbench.studyplan.domain.GoalTaskStats> goalTaskStats(Long userId) {
+        Map<Long, com.orbitworkbench.studyplan.domain.GoalTaskStats> byGoal = new HashMap<>();
+        for (com.orbitworkbench.studyplan.domain.GoalTaskStats stat : studyTaskService.listGoalTaskStats(userId)) {
+            byGoal.put(stat.getGoalId(), stat);
+        }
+        return byGoal;
+    }
+
+    /** V58：给目标拆一步（同名幂等返回 created=0）。目标归属校验在这里，任务侧只管插入。 */
+    @Transactional
+    public Map<String, Object> addTask(Long userId, Long goalId, String title) {
+        requireOwned(userId, goalId);
+        int created = studyTaskService.generateFromGoal(userId, goalId, title);
+        return Map.of("created", created);
     }
 
     @Transactional

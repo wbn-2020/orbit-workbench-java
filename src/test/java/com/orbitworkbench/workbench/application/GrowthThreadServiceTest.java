@@ -137,6 +137,39 @@ class GrowthThreadServiceTest {
     }
 
     @Test
+    void factGoalThreadExtendsWithGoalTasksAndDerivedProgress() {
+        UserFactRecord fact = new UserFactRecord();
+        fact.setId(10L);
+        fact.setUserId(7L);
+        fact.setTitle("技能栈");
+        fact.setConfirmationStatus(UserFactStatus.CONFIRMED);
+        fact.setSource(UserFactSource.USER_ENTERED);
+        when(userFactMapper.listByUser(7L)).thenReturn(List.of(fact));
+        LearningGoalRow goal = new LearningGoalRow();
+        goal.setId(40L);
+        goal.setTitle("技能栈");
+        goal.setStatus(LearningGoalStatus.ACTIVE);
+        goal.setProgress(30); // 手存旧值——V58 起有任务时不采信
+        goal.setSourceFactId(10L);
+        when(learningGoalMapper.listByUser(7L, 200, 0)).thenReturn(List.of(goal));
+        when(studyTaskMapper.listByUser(7L, null)).thenReturn(List.of(
+                task(61L, StudyTaskSource.GOAL, 40L, "读两篇源码文章", StudyTaskStatus.COMPLETED),
+                task(62L, StudyTaskSource.GOAL, 40L, "写一页笔记", StudyTaskStatus.PLANNED),
+                task(63L, StudyTaskSource.MANUAL, null, "无关任务", StudyTaskStatus.PLANNED)));
+
+        List<GrowthThread> threads = service.threads(7L);
+
+        assertEquals(1, threads.size());
+        GrowthThread thread = threads.get(0);
+        assertEquals(3, thread.steps().size()); // GOAL 步 + 两条拆解任务；MANUAL 不挂进来
+        assertEquals("推进中 · 50%", thread.steps().get(0).status()); // 1/2 派生，手存 30 被覆盖
+        assertEquals("GOAL", thread.steps().get(0).kind());
+        assertEquals("TASK", thread.steps().get(1).kind());
+        assertEquals("已完成", thread.steps().get(1).status());
+        assertEquals("计划中", thread.steps().get(2).status());
+    }
+
+    @Test
     void goalWithOrphanFactLinkNotDrawn() {
         when(userFactMapper.listByUser(7L)).thenReturn(List.of());
         LearningGoalRow goal = new LearningGoalRow();

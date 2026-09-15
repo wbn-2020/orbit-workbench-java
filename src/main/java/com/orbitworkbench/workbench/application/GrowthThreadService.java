@@ -10,6 +10,7 @@ import com.orbitworkbench.learning.domain.LearningGoalRow;
 import com.orbitworkbench.learning.infrastructure.mapper.LearningGoalMapper;
 import com.orbitworkbench.studyplan.domain.StudyTaskRecord;
 import com.orbitworkbench.studyplan.domain.StudyTaskSource;
+import com.orbitworkbench.studyplan.domain.StudyTaskStatus;
 import com.orbitworkbench.studyplan.infrastructure.mapper.StudyTaskMapper;
 import com.orbitworkbench.userfact.domain.UserFactRecord;
 import com.orbitworkbench.userfact.infrastructure.mapper.UserFactMapper;
@@ -64,7 +65,7 @@ public class GrowthThreadService {
         List<StudyTaskRecord> tasks = studyTaskMapper.listByUser(userId, null);
         List<GrowthThread> out = new ArrayList<>();
         out.addAll(craftThreads(userId, tasks));
-        out.addAll(factThreads(userId));
+        out.addAll(factThreads(userId, tasks));
         out.addAll(reportThreads(userId, tasks));
         return out.size() <= MAX_THREADS ? List.copyOf(out) : List.copyOf(out.subList(0, MAX_THREADS));
     }
@@ -101,11 +102,17 @@ public class GrowthThreadService {
         return out;
     }
 
-    /** 事实链：CONFIRMED/ARCHIVED 事实 → 由它转化的目标（V52 链接在目标侧）。 */
-    private List<GrowthThread> factThreads(Long userId) {
+    /** 事实链：CONFIRMED/ARCHIVED 事实 → 由它转化的目标（V52）→ 目标拆出的执行任务（V58）。 */
+    private List<GrowthThread> factThreads(Long userId, List<StudyTaskRecord> tasks) {
         Map<Long, UserFactRecord> factsById = new HashMap<>();
         for (UserFactRecord fact : userFactMapper.listByUser(userId)) {
             factsById.put(fact.getId(), fact);
+        }
+        Map<Long, List<StudyTaskRecord>> byGoal = new HashMap<>();
+        for (StudyTaskRecord task : tasks) {
+            if (task.getSourceType() == StudyTaskSource.GOAL && task.getSourceId() != null) {
+                byGoal.computeIfAbsent(task.getSourceId(), k -> new ArrayList<>()).add(task);
+            }
         }
         List<GrowthThread> out = new ArrayList<>();
         for (LearningGoalRow goal : learningGoalMapper.listByUser(userId, GOAL_LIMIT, 0)) {
@@ -116,12 +123,18 @@ public class GrowthThreadService {
             if (fact == null) {
                 continue; // 事实查不到（不应发生，FK 保证）——宁缺毋滥
             }
+            List<StudyTaskRecord> goalTasks = byGoal.getOrDefault(goal.getId(), List.of());
+            List<ThreadStep> steps = new ArrayList<>();
+            steps.add(new ThreadStep("GOAL", goal.getId(), goal.getTitle(),
+                    goalStatusText(goal, goalTasks), "/learning-update"));
+            for (StudyTaskRecord task : goalTasks) {
+                steps.add(new ThreadStep("TASK", task.getId(), task.getTitle(),
+                        taskStatusText(task), "/study-plan"));
+            }
             out.add(new GrowthThread("FACT",
                     List.of(new ThreadStep("FACT", fact.getId(), fact.getTitle(),
                             factStatusText(fact), "/profile/job")),
-                    List.of(new ThreadStep("GOAL", goal.getId(), goal.getTitle(),
-                            goalStatusText(goal), "/learning-update")),
-                    null));
+                    steps, null));
         }
         return out;
     }
@@ -167,12 +180,23 @@ public class GrowthThreadService {
         };
     }
 
-    private static String goalStatusText(LearningGoalRow goal) {
+    /**
+     * V58 同步：目标有拆解任务时，脉络里显示的进度与目标卡一致——从任务派生
+     * （完成/总数四舍五入），不读可能过时的存储 progress；没拆任务时保留手动值。
+     */
+    private static String goalStatusText(LearningGoalRow goal, List<StudyTaskRecord> goalTasks) {
+        String progressPart;
+        if (goalTasks == null || goalTasks.isEmpty()) {
+            progressPart = goal.getProgress() + "%";
+        } else {
+            long done = goalTasks.stream().filter(t -> t.getStatus() == StudyTaskStatus.COMPLETED).count();
+            progressPart = Math.round(done * 100.0 / goalTasks.size()) + "%";
+        }
         if (goal.getStatus() == null) {
             return "未知状态";
         }
         return switch (goal.getStatus()) {
-            case ACTIVE -> "推进中 · " + goal.getProgress() + "%";
+            case ACTIVE -> "推进中 · " + progressPart;
             case PAUSED -> "已暂缓";
             case DONE -> "已完成";
         };

@@ -289,6 +289,30 @@ class StudyTaskServiceTest {
     // ---- V50：练习完成回写 ----
 
     @Test
+    void generateFromGoalCreatesStepTaskOnce() {
+        when(mapper.countBySourceTitle(7L, StudyTaskSource.GOAL, 9L, "读两篇源码文章")).thenReturn(0);
+
+        int created = service.generateFromGoal(7L, 9L, "  读两篇源码文章  ");
+
+        assertEquals(1, created);
+        ArgumentCaptor<StudyTaskRecord> saved = ArgumentCaptor.forClass(StudyTaskRecord.class);
+        verify(mapper).insert(saved.capture());
+        assertEquals(StudyTaskSource.GOAL, saved.getValue().getSourceType());
+        assertEquals(9L, saved.getValue().getSourceId());
+        assertEquals("读两篇源码文章", saved.getValue().getTitle()); // trim 后入库
+        assertEquals("GOAL_STEP", saved.getValue().getTaskType());
+        assertEquals(StudyTaskStatus.PLANNED, saved.getValue().getStatus());
+    }
+
+    @Test
+    void generateFromGoalIsIdempotentByTitle() {
+        when(mapper.countBySourceTitle(7L, StudyTaskSource.GOAL, 9L, "同样的步骤")).thenReturn(1);
+
+        assertEquals(0, service.generateFromGoal(7L, 9L, "同样的步骤"));
+        verify(mapper, never()).insert(any(StudyTaskRecord.class));
+    }
+
+    @Test
     void completeCraftTaskWritesBackPracticeCount() {
         StudyTaskRecord record = task(StudyTaskStatus.PLANNED);
         record.setSourceType(StudyTaskSource.CRAFT);

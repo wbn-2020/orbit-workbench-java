@@ -40,6 +40,12 @@ public interface StudyTaskMapper {
     /** V49：已有练习任务的套路 id 集合（用于本事库回显「已在练习计划」）。 */
     List<Long> listCraftIdsWithPracticeTask(@Param("userId") Long userId);
 
+    /**
+     * V58：每个学习目标的任务统计（GOAL 来源按 source_id 分组）。
+     * 进度在读取时从这里派生——不加派生列、不双写（V50 mastered 同一纪律）。
+     */
+    List<com.orbitworkbench.studyplan.domain.GoalTaskStats> listGoalTaskStats(@Param("userId") Long userId);
+
     int countBySourceTitle(
             @Param("userId") Long userId,
             @Param("sourceType") StudyTaskSource sourceType,

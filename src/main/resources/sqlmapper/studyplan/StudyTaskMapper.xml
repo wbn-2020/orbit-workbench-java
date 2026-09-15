@@ -112,4 +112,16 @@
           AND source_id = #{sourceId}
           AND title = #{title}
     </select>
+
+    <!-- V58：目标拆出的任务统计（完成数/总数）。SKIPPED 不进完成数——跳过的步骤不算走过。 -->
+    <select id="listGoalTaskStats" resultType="com.orbitworkbench.studyplan.domain.GoalTaskStats">
+        SELECT source_id AS goalId,
+               COUNT(*) AS total,
+               SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed
+        FROM study_task
+        WHERE user_id = #{userId}
+          AND source_type = 'GOAL'
+          AND source_id IS NOT NULL
+        GROUP BY source_id
+    </select>
 </mapper>

@@ -1,6 +1,7 @@
 package com.orbitworkbench.learning.api;
 
 import com.orbitworkbench.identity.application.OrbitUserDetails;
+import com.orbitworkbench.learning.api.LearningGoalDtos.AddGoalTaskRequest;
 import com.orbitworkbench.learning.api.LearningGoalDtos.CreateLearningGoalRequest;
 import com.orbitworkbench.learning.api.LearningGoalDtos.LearningGoalResponse;
 import com.orbitworkbench.learning.api.LearningGoalDtos.UpdateLearningGoalRequest;
@@ -52,6 +53,14 @@ public class LearningGoalController {
     public LearningGoalResponse createFromFact(@PathVariable Long factId,
                                                Authentication authentication) {
         return service.createFromFact(userId(authentication), factId);
+    }
+
+    /** V58：给目标拆一步执行任务；同名步骤幂等（created=0 不堆任务）。 */
+    @PostMapping("/{id}/tasks")
+    public java.util.Map<String, Object> addTask(@PathVariable Long id,
+                                                 @Valid @RequestBody AddGoalTaskRequest request,
+                                                 Authentication authentication) {
+        return service.addTask(userId(authentication), id, request.title());
     }
 
     private Long userId(Authentication authentication) {

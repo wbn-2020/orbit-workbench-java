@@ -65,6 +65,12 @@ public class StudyTaskService {
                 .toList();
     }
 
+    /** V58：目标任务统计（读取侧派生进度用；学习域经本方法拿数，不直连 studyplan 的 mapper）。 */
+    @Transactional(readOnly = true)
+    public List<com.orbitworkbench.studyplan.domain.GoalTaskStats> listGoalTaskStats(Long userId) {
+        return mapper.listGoalTaskStats(userId);
+    }
+
     @Transactional
     public TaskResponse start(Long userId, Long taskId) {
         StudyTaskRecord record = ownedTask(userId, taskId);
@@ -180,6 +186,36 @@ public class StudyTaskService {
         record.setTitle(title);
         record.setTopic(craft.getCategory());
         record.setTaskType("CRAFT_PRACTICE");
+        record.setPriority(StudyTaskPriority.MEDIUM);
+        record.setStatus(StudyTaskStatus.PLANNED);
+        record.setManual(false);
+        record.setCreatedAt(now);
+        record.setUpdatedAt(now);
+        mapper.insert(record);
+        return 1;
+    }
+
+    /**
+     * V58：给学习目标拆出执行步骤（目标 → 任务拆解）。与 V49 练习任务同一幂等口径：
+     * 来源 GOAL + 目标 id + 标题去重，重复提交同名步骤返回 created=0 不堆任务。
+     * 目标归属校验在学习侧调用方（LearningGoalController），这里只管任务。
+     */
+    @Transactional
+    public int generateFromGoal(Long userId, Long goalId, String rawTitle) {
+        String title = rawTitle.trim();
+        if (title.length() > 300) {
+            title = title.substring(0, 300);
+        }
+        if (mapper.countBySourceTitle(userId, StudyTaskSource.GOAL, goalId, title) > 0) {
+            return 0;
+        }
+        Instant now = Instant.now();
+        StudyTaskRecord record = new StudyTaskRecord();
+        record.setUserId(userId);
+        record.setSourceType(StudyTaskSource.GOAL);
+        record.setSourceId(goalId);
+        record.setTitle(title);
+        record.setTaskType("GOAL_STEP");
         record.setPriority(StudyTaskPriority.MEDIUM);
         record.setStatus(StudyTaskStatus.PLANNED);
         record.setManual(false);
